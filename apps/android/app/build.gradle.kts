@@ -15,6 +15,9 @@ require(uri.scheme in listOf("http", "https") && uri.host != null && uri.userInf
 android {
     namespace = "ru.farvater.driver"
     compileSdk { version = release(36) { minorApiLevel = 1 } }
+    val mapAssets = providers.gradleProperty("routeMapAssetsDir")
+        .orElse(rootProject.file("../../packages/route-map/static").absolutePath)
+    sourceSets.getByName("main").assets.directories.add(mapAssets.get())
     defaultConfig {
         applicationId = "ru.farvater.driver"
         minSdk = 26

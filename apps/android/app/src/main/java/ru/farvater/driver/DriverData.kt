@@ -36,7 +36,9 @@ internal data class Stop(
     val start: Int, val end: Int, val eta: Int, val water: Int, val shells: Int,
     val waterPrice: Long, val shellPrice: Long, val total: Long, val bank: Boolean,
     val company: String, val status: String, val paid: Boolean, val onSite: Boolean, val failureReason: String,
-    val items: List<OrderItem>
+    val items: List<OrderItem>, val altPhone: String = "", val entrance: String = "",
+    val unit: String = "", val intercom: String = "", val accessInstructions: String = "", val paidEntry: Boolean = false,
+    val latitude: Double? = null, val longitude: Double? = null
 )
 
 internal data class Trip(
@@ -90,7 +92,10 @@ internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: Lis
                     it.text("status"), it.optBoolean("paid"), it.text("origin") == "on_site", it.text("failure_reason"),
                     it.optJSONArray("items")?.mapObjects { row ->
                         OrderItem(row.getInt("product_id"), row.getString("name"), row.getInt("water"), row.getLong("water_price"))
-                    }.orEmpty())
+                    }.orEmpty(), it.text("alt_phone"), it.text("entrance"), it.text("unit"), it.text("intercom"),
+                    it.text("access_instructions"), it.optBoolean("paid_entry"),
+                    it.optDouble("latitude").takeIf { value -> value in -90.0..90.0 },
+                    it.optDouble("longitude").takeIf { value -> value in -180.0..180.0 })
             }.sortedBy { it.position }
             val report = data.getJSONArray("reports").optJSONObject(0)?.let {
                 Report(it.getBoolean("matched"), Counts.parse(it.getJSONObject("expected")),

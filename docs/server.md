@@ -12,6 +12,8 @@
 | База производства | `BASE_ADDRESS`, необязательные `BASE_LAT` и `BASE_LON`, `BUSINESS_TZ` |
 | Демо | `SEED_DEMO`, `DEMO_PASSWORD`, `DEMO_WATER_PRICE_KOP`. Для отдельной рабочей БД задать `SEED_DEMO=false` при первом запуске |
 | Маршруты | `MAP_PROVIDER=demo`, `DEMO_LEG_MINUTES`, `STOP_BASE_MINUTES`, `STOP_PER_BOTTLE_MINUTES`, `RELOAD_MINUTES`, `FLOOR_MINUTES`, `CHECKPOINT_MINUTES`, `LOADER_FACTOR` |
+| Картографическая подложка | `MAP_TILES_ENABLED=true` по умолчанию разрешает клиенту показывать стандартные уличные тайлы OSM. Для автономного обзора Natural Earth установите `false` |
+| Поиск адресов | `GEOCODER_ENABLED=true`, `GEOCODER_URL=https://photon.komoot.io/api/`. Для своего Photon задайте HTTP(S)-адрес его endpoint `/api/`, доступный процессу API. Интервал между запросами к геокодеру задаёт `GEOCODER_MIN_INTERVAL_MS` (1000), таймаут — `GEOCODER_TIMEOUT_MS` (5000) |
 | Android | `ANDROID_API_URL` на этапе сборки, на сервере — HTTPS origin |
 
 ## Первичная настройка

@@ -11,10 +11,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -112,18 +112,26 @@ class CallReceiver : BroadcastReceiver() {
 @Composable
 internal fun ReminderPermission(model: DriverModel) {
     val context = LocalContext.current
-    if (Build.VERSION.SDK_INT < 33) return
     var enabled by remember { mutableStateOf(CallReminders(context).canNotify()) }
     var asked by remember { mutableStateOf(false) }
+    LifecycleResumeEffect(context) {
+        val allowed = CallReminders(context).canNotify()
+        if (allowed && !enabled) model.refresh()
+        enabled = allowed
+        onPauseOrDispose {}
+    }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         enabled = granted
         asked = true
         if (granted) model.refresh()
     }
-    if (!enabled) {
-        if (asked) Text("Напоминания выключены. Разрешение можно изменить в настройках уведомлений приложения.")
-        else TextButton(onClick = { launcher.launch(Manifest.permission.POST_NOTIFICATIONS) }) {
-            Text("Включить напоминания о звонке")
+    Setting(Mark.Bell, "Напоминания о звонках", if (enabled) "Включены · за 90 минут до прибытия" else "Выключены") {
+        if (!enabled && !asked && Build.VERSION.SDK_INT >= 33) {
+            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            val settings = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            context.startActivity(settings)
         }
     }
 }

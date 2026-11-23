@@ -17,6 +17,14 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     private val store = SecureStore(app)
     private val reminders = CallReminders(app)
     private val scope = BuildConfig.API_URL
+    private val appearance=app.getSharedPreferences("driver.appearance",android.content.Context.MODE_PRIVATE)
+    var theme by mutableStateOf(appearance.getString("theme","system") ?: "system")
+        private set
+    fun chooseTheme(mode:String) {
+        if(mode !in setOf("system","light","dark"))return
+        appearance.edit().putString("theme",mode).apply()
+        theme=mode
+    }
     private var token = ""
     private var actor = 0
     var name by mutableStateOf("")
@@ -40,6 +48,8 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     var day by mutableStateOf<Day?>(null)
         private set
     var base by mutableStateOf("")
+        private set
+    var mapBase by mutableStateOf(MapBase())
         private set
     var pending by mutableStateOf<JSONObject?>(null)
         private set
@@ -67,6 +77,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
             today = it.getString("today")
             tomorrow = it.getString("tomorrow")
             base = it.optString("base")
+            mapBase = MapBase.from(it.optJSONObject("map") ?: JSONObject())
             offline = true
         }
     }
@@ -112,6 +123,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         today = ""
         tomorrow = ""
         base = ""
+        mapBase = MapBase()
         offline = false
     }
     fun login(email: String, password: String) = action {
@@ -144,6 +156,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         today = config.getString("today")
         tomorrow = config.getString("tomorrow")
         base = if (config.isNull("base_address")) "" else config.getString("base_address")
+        mapBase = MapBase.from(config)
         val selected = chosen ?: pending?.optString("date") ?: date.takeIf { it == today || it == tomorrow } ?: today
         if (date != selected) day = null
         date = selected
@@ -158,12 +171,14 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         day = updatedDay
         reminders.sync(updatedDay, selected, config.getString("timezone"))
         store.put("day:$scope:$actor", json("date" to selected, "today" to today,
-            "tomorrow" to tomorrow, "base" to base, "data" to data))
+            "tomorrow" to tomorrow, "base" to base, "map" to mapBase.json(), "data" to data))
         offline = false
     }
     fun refresh(chosen: String? = null) = action { update(chosen) }
 
-    fun write(path: String, body: JSONObject, label: String) = action {
+    fun dismissMessage() { message = ""; failed = false }
+
+    fun write(path: String, body: JSONObject, label: String, saved: () -> Unit = {}) = action {
         check(pending == null)
         val command = json("path" to path, "body" to body, "key" to UUID.randomUUID().toString(),
             "date" to date, "label" to label)
@@ -171,6 +186,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         store.put("write:$scope:$actor", command)
         pending = command
         send(command)
+        saved()
     }
     fun retry() = action { pending?.let { send(it) } }
 
