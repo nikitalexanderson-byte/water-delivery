@@ -90,6 +90,68 @@ test('настроенная база видна на карте и замыка
   }
 });
 
+test('расчёт по дорогам показывает время, перегоны и повтор после сбоя',async({page})=>{
+  let calls=0;
+  const road={status:'ready',has_base:true,duration_s:7622,distance_m:46320,
+    geometry:{type:'LineString',coordinates:[[37.58,55.70],[37.599,55.589],[37.61,55.592],[37.669,55.622],[37.58,55.70]]},
+    legs:[{from_id:'base',to_id:'demo-0-0',duration_s:900,distance_m:4500},
+      {from_id:'demo-0-4',to_id:'base',duration_s:600,distance_m:2100}]};
+  await page.route('**/api/road-routes/example/*',route=>{
+    if(route.request().url().endsWith('demo-1'))return route.fulfill({json:{status:'missing_points',message:'Недостаточно точек с координатами.'}});
+    return route.fulfill({json:++calls===1?{status:'unavailable',message:'Сервис временно недоступен.'}:road});
+  });
+  await signIn(page,'dispatcher','/?view=atlas&example=1');
+  const section=page.getByRole('region',{name:'Дорожный маршрут выбранного рейса'});
+  await expect(section).toContainText('Сервис временно недоступен');
+  await section.getByRole('button',{name:'Повторить расчёт'}).click();
+  await expect(section).toContainText('46,3 км');
+  await expect(section).toContainText('2 ч 7 мин');
+  await expect(section).toContainText('без учёта пробок');
+  const map=iframe(page);
+  await expect(map.locator('path.road-line[data-trip-id="demo-0"]')).toHaveCount(1);
+  const stops=page.getByRole('complementary',{name:'Остановки выбранного рейса'});
+  await expect(stops).toContainText('От базы · 4,5 км · 15 мин');
+  await expect(stops).toContainText('Возврат на базу · 2,1 км · 10 мин');
+  await page.setViewportSize({width:390,height:844});
+  await page.getByLabel('Выбранный рейс').selectOption('demo-1');
+  await expect(section).toContainText('Недостаточно точек');
+  await expect(map.locator('path.road-line[data-trip-id="demo-1"]')).toHaveCount(0);
+  await page.getByLabel('Выбранный рейс').selectOption('demo-0');
+  await expect(section).toContainText('46,3 км');
+  expect(calls).toBe(2);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('большой парк рассчитывает только выбранный рейс и учитывает изменение координат',async({page})=>{
+  let revised=false;
+  const calls=[];
+  await page.route('**/api/day?*',async route=>{
+    const response=await route.fetch(),day=await response.json();
+    const trips=Array.from({length:12},(_,i)=>({id:700+i,number:i+1,shift_id:2}));
+    const orders=trips.flatMap(trip=>[1,2].map(position=>({id:trip.id*10+position,trip_id:trip.id,position,origin:'office',
+      status:'assigned',name:'Учебный клиент',address:'Учебная улица '+position,water:1,
+      latitude:revised&&trip.id===711?55.72:55.71,longitude:37.6+position*.01})));
+    await route.fulfill({json:{...day,trips,orders}});
+  });
+  await page.route('**/api/road-routes/trip/*',route=>{
+    const id=new URL(route.request().url()).pathname.split('/').at(-1);
+    calls.push(id);
+    return route.fulfill({json:{status:'unavailable',message:'Проверен рейс '+id+(revised?' · обновлён':'')}});
+  });
+  await signIn(page,'dispatcher','/?view=atlas');
+  const result=page.getByRole('region',{name:'Дорожный маршрут выбранного рейса'});
+  await expect(result).toContainText('Проверен рейс 700');
+  await page.getByLabel('Выбранный рейс').selectOption('711');
+  await expect(result).toContainText('Проверен рейс 711');
+  const refresh=page.getByRole('button',{name:'Обновить данные'});
+  const refreshed=page.waitForResponse(r=>r.url().includes('/api/day?'));
+  await refresh.click();await refreshed;
+  revised=true;
+  await refresh.click();
+  await expect(result).toContainText('Проверен рейс 711 · обновлён');
+  expect(calls).toEqual(['700','711','711']);
+});
+
 test('рабочие точки с координатами и без них открывают нужную схему и карточку заказа',async({page,request})=>{
   const office=await auth(request,'dispatcher'),driver=await auth(request,'driver1');
   const {today}=await (await request.get('/api/config')).json();

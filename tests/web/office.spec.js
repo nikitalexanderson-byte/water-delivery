@@ -27,7 +27,7 @@ test('приём вечернего заказа, проверка адреса,
   await dialog.getByLabel('Принимают до').fill('21:45');
   await dialog.getByLabel('Бутыли 19 л, шт.').fill('5');
   await dialog.getByLabel('За бутыль воды, ₽').fill('100');
-  await dialog.getByLabel('Добавить новую тару').check();
+  await dialog.getByLabel(/Тары у клиента нет/).check();
   await dialog.getByLabel(/Новая тара по/).fill('2');
   await dialog.getByLabel('Способ оплаты').selectOption('bank');
   await dialog.getByLabel('Название компании').fill('ООО Учебный пример');
@@ -221,7 +221,7 @@ test('каталог и смешанный заказ сохраняют бре�
   await line2.getByLabel('Бренд воды').selectOption({label:'Вода из тестовой скважины'});
   await expect(line2.getByLabel('За бутыль воды, ₽')).toHaveValue('97.1');
   await line2.getByLabel('Бутыли 19 л, шт.').fill('2');
-  await modal.getByLabel('Добавить новую тару').check();
+  await modal.getByLabel(/Тары у клиента нет/).check();
   await expect(modal.locator('.dialog-footer strong')).toHaveText(/814,55\s₽/);
   await modal.getByRole('button',{name:'Создать заказ'}).click();
   const row=page.getByRole('row',{name:/Корзина из двух брендов/});
@@ -243,7 +243,7 @@ test('третий экипаж регистрируется, получает �
   const {tomorrow}=await (await request.get('/api/config')).json();
   await login(page,'manager');
   await page.getByRole('button',{name:'Маршруты',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Добавить машину',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Добавить машину',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Добавить сотрудника'}).click();
   const modal=page.getByRole('dialog');
   await modal.getByLabel('Имя сотрудника').fill('Кирилл Лебедев');
@@ -305,7 +305,11 @@ test('оператор находит клиента по телефону и п
   await dialog.getByLabel('Адрес проверен для тестового маршрута').check();
   await dialog.getByLabel('За бутыль воды, ₽').fill('141.25');
   await dialog.getByText('Этаж, въезд и инструкции',{exact:true}).click();
+  await dialog.getByLabel('Дополнительный номер').check();
   await dialog.getByLabel('Дополнительный телефон').fill('+70000000098');
+  await dialog.getByLabel('Парковка, мин').fill('7');
+  await dialog.getByLabel('Есть тележка').check();
+  await dialog.getByLabel('Можно доставить сегодня').check();
   await dialog.getByLabel('Подъезд',{exact:true}).fill('2');
   await dialog.getByLabel('Квартира или офис').fill('12А');
   await dialog.getByLabel('Домофон и код').fill('12#');
@@ -345,6 +349,9 @@ test('оператор находит клиента по телефону и п
   await expect(dialog.getByLabel('Дата доставки')).toHaveValue(tomorrow);
   await dialog.getByText('Этаж, въезд и инструкции',{exact:true}).click();
   await expect(dialog.getByLabel('Домофон и код')).toHaveValue('12#');
+  await expect(dialog.getByLabel('Парковка, мин')).toHaveValue('7');
+  await expect(dialog.getByLabel('Есть тележка')).toBeChecked();
+  await expect(dialog.getByLabel('Можно доставить сегодня')).toBeChecked();
   await expect(dialog.getByLabel('Платный въезд')).toBeChecked();
 });
 
@@ -363,4 +370,52 @@ test('узкий экран сохраняет доступ к разделам,
     await expect(page.getByRole('heading',{level:1,name:title})).toBeVisible();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
   }
+});
+test('календарь показывает 30 дней, открывает дату и карточку за весь период',async({page,request})=>{
+  const {tomorrow}=await(await request.get('/api/config')).json();
+  await page.setViewportSize({width:390,height:844});
+  await login(page,'dispatcher');
+  await page.getByRole('button',{name:'Календарь заказов'}).click();
+  const calendar=page.getByRole('dialog',{name:'Календарь заказов'});
+  const days=calendar.locator('.order-date-grid button');
+  await expect(days).toHaveCount(30);
+  await expect(days.first()).toHaveAttribute('aria-label',/заказ/);
+  await calendar.getByRole('button',{name:'Следующие 30 дней'}).click();
+  await expect(days.first()).not.toHaveAttribute('aria-current','date');
+  await calendar.getByRole('button',{name:'Предыдущие 30 дней'}).click();
+  await days.nth(1).click();
+  await expect(page.getByLabel('Дата рабочего дня')).toHaveValue(tomorrow);
+  await page.getByRole('button',{name:'Календарь заказов'}).click();
+  await calendar.getByRole('button',{name:'Весь период'}).click();
+  const record=calendar.locator('.order-archive button').first();
+  const id=(await record.innerText()).match(/№ (\d+)/)[1];
+  await record.click();
+  await expect(page.getByRole('dialog',{name:'Заказ №'+id})).toBeVisible();
+});
+
+test('диспетчер видит согласованные будущие заказы и назначает один на сегодня',async({page,request})=>{
+  const {today,tomorrow}=await(await request.get('/api/config')).json();
+  const session=async(role)=>{
+    const response=await request.post('/api/login',{data:{email:role+'@farvater.test',password}});
+    return {Authorization:'Bearer '+(await response.json()).token};
+  };
+  const desk=await session('dispatcher');
+  for(const name of ['driver1','driver2']){
+    const driver=await session(name);
+    const shiftView=await(await request.get('/api/day?date='+today,{headers:driver})).json();
+    const shift=shiftView.shifts[0];
+    if(shift.status==='pending')expect((await request.post('/api/shifts/'+shift.id+'/confirm',{headers:driver,data:{}})).ok()).toBeTruthy();
+  }
+  const created=await request.post('/api/orders',{headers:desk,data:{name:'Клиент досрочной доставки',phone:'+70000000666',
+    address:'Учебный проезд, 3',date:tomorrow,window_start:510,window_end:1040,water:1,water_price:30000,
+    category:'retail',payment_method:'cash',address_verified:true,can_deliver_today:true}});
+  expect(created.ok()).toBeTruthy();
+  const {id}=await created.json();
+  await login(page,'dispatcher');
+  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
+  const offers=page.getByRole('region',{name:'Можно доставить сегодня'});
+  const entry=offers.locator('.queue-row').filter({hasText:'№ '+id+' ·'});
+  await entry.getByRole('button',{name:'Подобрать рейс на сегодня'}).click();
+  await expect(page.getByRole('status').filter({hasText:'Заказ №'+id+' перенесён на сегодня и назначен на рейс.'})).toBeVisible();
+  await expect(entry).toHaveCount(0);
 });

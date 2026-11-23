@@ -6,7 +6,9 @@
   const darkColors=['#126a60','#3259ac','#974c1b','#704e9d','#805809','#286e89'];
   const hasPoint=p=>p && Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&Math.abs(p.lat)<=90&&Math.abs(p.lon)<=180;
   let data=null,map,layers,mode,chosenMode=null,sceneKey='',focusKey='',currentBounds=[],pins=new Map(),tileError=false;
-  let positionLayers,pickerLayers,streetTiles;
+  let positionLayers,pickerLayers,streetTiles,roadLayers,roadBounds=[],roadKey='',followExtent=true;
+  const roadAttribution='Маршруты © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+  let creditedRoads=false;
   // Extent of the bundled regional overview, independent of the configured depot.
   const overviewBounds=[[55.34,37.15],[55.93,37.96]];
   const actionKeys=['geo','scheme'];
@@ -14,8 +16,8 @@
   function fit(){
     if(data.picker && hasPoint(data.picked)){
       map.setView([data.picked.lat,data.picked.lon],16,{animate:false});
-    }else if(currentBounds.length){
-      map.fitBounds(L.latLngBounds(currentBounds),{padding:[36,32],maxZoom:mode==='geo'?16:2,animate:false});
+    }else if(currentBounds.length||roadBounds.length){
+      map.fitBounds(L.latLngBounds([...currentBounds,...roadBounds]),{padding:[36,32],maxZoom:mode==='geo'?16:2,animate:false});
     }else if(mode==='geo'){
       if(hasPoint(data.location))centreLocation();
       else map.fitBounds(overviewBounds,{padding:[8,8],animate:false});
@@ -60,12 +62,36 @@
     }
     return root;
   }
-  function line(points,color,emphasis){
+  function line(points,color,emphasis,roadId){
     if(points.length<2)return;
     const pane={interactive:false,smoothFactor:1};
     const weight=emphasis?5:3;
-    L.polyline(points,{...pane,color:data.theme==='dark'?'#152630':'white',weight:weight+3,opacity:.9}).addTo(layers);
-    L.polyline(points,{...pane,color,weight,opacity:emphasis ? 0.96 : 0.72}).addTo(layers);
+    const group=roadId==null?layers:roadLayers;
+    L.polyline(points,{...pane,color:data.theme==='dark'?'#152630':'white',weight:weight+3,opacity:.9}).addTo(group);
+    const path=L.polyline(points,{...pane,color,weight,opacity:emphasis ? 0.96 : 0.72,
+      className:roadId==null?'schematic-line':'road-line'}).addTo(group);
+    if(roadId!=null)path.getElement().dataset.tripId=String(roadId);
+  }
+  function drawRoads(){
+    roadLayers.clearLayers();roadBounds=[];
+    if(mode!=='geo')return;
+    const palette=data.theme==='dark'?darkColors:colors;
+    const ordered=data.trips.map((trip,i)=>({trip,i})).sort((a,b)=>Number(a.trip.id===data.activeTripId)-Number(b.trip.id===data.activeTripId));
+    for(const {trip,i} of ordered){
+      const result=data.roads?.[trip.id];
+      if(result?.status!=='ready'||result.geometry?.type!=='LineString')continue;
+      const coords=result.geometry.coordinates;
+      if(!Array.isArray(coords)||coords.length<2||!coords.every(pair=>Array.isArray(pair)&&hasPoint({lon:pair[0],lat:pair[1]})))continue;
+      const path=coords.map(([lon,lat])=>[lat,lon]);
+      const bounds=L.latLngBounds(path);
+      roadBounds.push(bounds.getSouthWest(),bounds.getNorthEast());
+      line(path,palette[Math.abs(trip.colorIndex??i)%palette.length],data.trips.length===1||trip.id===data.activeTripId,trip.id);
+    }
+    if(creditedRoads!==Boolean(roadBounds.length)){
+      creditedRoads=Boolean(roadBounds.length);
+      if(creditedRoads)map.attributionControl.addAttribution(roadAttribution);
+      else map.attributionControl.removeAttribution(roadAttribution);
+    }
   }
   function pin(point,trip,stop,color,emphasis){
     const label=trip.label+', точка '+stop.position+', '+stop.address;
@@ -94,21 +120,20 @@
       const emphasis=trips.length===1||trip.id===data.activeTripId;
       const palette=data.theme==='dark'?darkColors:colors;
       const color=palette[Math.abs(trip.colorIndex??i)%palette.length];
-      let segment=base?[base]:[];
+      const segment=mode==='scheme'?[base]:[];
       const row=(trips.length-1-2*i)*43;
       for(const [j,stop] of trip.stops.entries()){
         const point=mode==='geo'?(hasPoint(stop)?[stop.lat,stop.lon]:null):[row,75+62*j];
-        if(!point){line(segment,color,emphasis);segment=[];continue;}
-        currentBounds.push(point);segment.push(point);pin(point,trip,stop,color,emphasis);
+        if(!point)continue;
+        currentBounds.push(point);pin(point,trip,stop,color,emphasis);
+        if(mode==='scheme')segment.push(point);
       }
-      if(base && segment.length){
-        if(mode==='scheme' && trip.stops.length){
-          const end=segment.at(-1);
-          segment.push([end[0]-23,end[1]+20],[row-23,26]);currentBounds.push(segment[segment.length-2]);
-        }
+      if(mode==='scheme'&&trip.stops.length){
+        const end=segment.at(-1);
+        segment.push([end[0]-23,end[1]+20],[row-23,26]);currentBounds.push(segment[segment.length-2]);
         segment.push(base);
+        line(segment,color,emphasis);
       }
-      line(segment,color,emphasis);
     }
     if(base && (trips.length||mode==='geo'))showBase(base);
   }
@@ -144,7 +169,7 @@
       if(selected&&!hasPoint(selected))notes.push('у выбранной точки нет координат');
     }
     else{
-      if(stops.length)notes.push('Линии соединяют остановки по порядку');
+      if(stops.length)notes.push(data.trips.some(t=>data.roads?.[t.id]?.status==='ready')?'Автомобильный маршрут · без текущих пробок':'Остановки рейсов');
       else if(!hasPoint(data.location)&&!hasPoint(data.base))notes.push('Обзор Московского региона');
       if(!hasPoint(data.base))notes.push('координаты базы не заданы');
       if(unknown)notes.push('без координат: '+unknown);
@@ -158,13 +183,13 @@
   }
   function mount(next){
     if(map)map.remove();
-    mode=next;tileError=false;streetTiles=null;
+    mode=next;tileError=false;streetTiles=null;roadBounds=[];roadKey='';creditedRoads=false;
     map=L.map('canvas',{crs:next==='geo'?L.CRS.EPSG3857:L.CRS.Simple,zoomControl:false,attributionControl:next==='geo',
       minZoom:next==='geo'?1:-6,maxZoom:next==='geo'?19:4,zoomSnap:.25,zoomDelta:1,preferCanvas:false,
       scrollWheelZoom:true,worldCopyJump:false});
     if(map.attributionControl)map.attributionControl.setPrefix(false);
     L.control.zoom({position:'bottomright',zoomInTitle:'Приблизить',zoomOutTitle:'Отдалить'}).addTo(map);
-    layers=L.layerGroup().addTo(map);
+    roadLayers=L.layerGroup().addTo(map);layers=L.layerGroup().addTo(map);
     positionLayers=L.layerGroup().addTo(map);pickerLayers=L.layerGroup().addTo(map);
     map.on('click',e=>pick(e.latlng));
   }
@@ -197,9 +222,14 @@
       if(recreated){
         mode==='geo'?map.fitBounds(overviewBounds,{animate:false}):map.setView([0,0],0);
       }
-      drawTrips();if(geometryChanged||force)fit();sceneKey=key;
-      if(recreated)backdrop();
+      drawTrips();sceneKey=key;
     }
+    const nextRoadKey=mode==='geo'?JSON.stringify(data.trips.map(t=>data.roads?.[t.id]?.geometry??null)):'';
+    const roadsChanged=roadKey!==nextRoadKey;
+    if(roadsChanged||redraw){drawRoads();roadKey=nextRoadKey;}
+    if(geometryChanged||force){followExtent=true;fit();}
+    else if(roadsChanged&&followExtent&&!focus)fit();
+    if(recreated)backdrop();
     if(recreated||locate||prev?.location!==next.location)drawLocation();
     if(recreated||prev?.picked!==next.picked)drawPicked();
     if(data.picker&&hasPoint(data.picked)&&next.pickRequest!==prev?.pickRequest){
@@ -209,11 +239,12 @@
       const marker=pins.get(focus);
       if(marker){map.panTo(marker.getLatLng(),{animate:false});marker.openPopup();}
     }
-    if(locate)centreLocation();
+    if(locate){followExtent=false;centreLocation();}
     focusKey=focus;
   }
   for(const key of actionKeys)$(key).onclick=()=>{chosenMode=key;render(data,true);};
-  $('fit').onclick=()=>{map?.closePopup();fit();};
+  for(const event of ['pointerdown','wheel','keydown'])$('canvas').addEventListener(event,()=>{followExtent=false;},{passive:true});
+  $('fit').onclick=()=>{followExtent=true;map?.closePopup();fit();};
   $('pick-centre').onclick=()=>pick(map.getCenter());
   $('retry').onclick=()=>streetTiles?.redraw();
   window.addEventListener('online',()=>{if(tileError)streetTiles?.redraw();});

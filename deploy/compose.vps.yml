@@ -1,0 +1,74 @@
+name: farvater-vps
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 4s
+      retries: 15
+
+  api:
+    build: ..
+    restart: unless-stopped
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+      TRUST_PROXY_HOPS: 1
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:?}
+      PGUSER: ${POSTGRES_USER:?}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+      SEED_DEMO: "false"
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      BUSINESS_TZ: ${BUSINESS_TZ:-Europe/Moscow}
+      BASE_ADDRESS: ${BASE_ADDRESS:-}
+      BASE_LAT: ${BASE_LAT:-}
+      BASE_LON: ${BASE_LON:-}
+      MAP_TILES_ENABLED: ${MAP_TILES_ENABLED:-true}
+      GEOCODER_ENABLED: ${GEOCODER_ENABLED:-false}
+      GEOCODER_URL: ${GEOCODER_URL:-https://photon.komoot.io/api/}
+      ROAD_ROUTER_ENABLED: ${ROAD_ROUTER_ENABLED:-false}
+      ROAD_ROUTER_URL: ${ROAD_ROUTER_URL:-https://routing.openstreetmap.de/routed-car/}
+      SHEETS_EXPORT_ENABLED: ${SHEETS_EXPORT_ENABLED:-false}
+      SHEETS_TEAM_ID: ${SHEETS_TEAM_ID:-1}
+      SHEETS_SPREADSHEET_ID: ${SHEETS_SPREADSHEET_ID:-}
+      SHEETS_TAB: ${SHEETS_TAB:-ФАРВАТЕР — смены}
+      SHEETS_CLIENT_EMAIL: ${SHEETS_CLIENT_EMAIL:-}
+      SHEETS_PRIVATE_KEY: ${SHEETS_PRIVATE_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?}
+    ports:
+      - "${VPS_BIND:-0.0.0.0}:${VPS_HTTP_PORT:-80}:80"
+      - "${VPS_BIND:-0.0.0.0}:${VPS_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  postgres:
+  caddy_data:
+  caddy_config:

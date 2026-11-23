@@ -2,14 +2,21 @@ import { ensure } from './auth.js';
 import { audit } from './day.js';
 import { one, rows } from './db.js';
 
-export function catalog(tx, { activeOnly = false } = {}) {
-  return rows(tx, 'SELECT id,name,water_price,active FROM products WHERE (NOT $1::boolean OR active) ORDER BY id', [activeOnly]);
+export function catalog(tx, { activeOnly = false, teamId }) {
+  return rows(tx, 'SELECT id,name,water_price,active FROM products WHERE team_id=$2 AND (NOT $1::boolean OR active) ORDER BY id',
+    [activeOnly,teamId]);
+}
+
+export async function defaultProductId(tx,teamId) {
+  const product=await one(tx,'SELECT id FROM products WHERE team_id=$1 AND active ORDER BY id LIMIT 1',[teamId]);
+  ensure(product,'В команде ещё нет доступной воды в каталоге',400);
+  return product.id;
 }
 
 export async function createProduct(tx, user, input) {
   const product = await one(tx,
-    'INSERT INTO products(name,water_price,active) VALUES($1,$2,$3) RETURNING id,name,water_price,active',
-    [input.name.trim(), input.water_price, input.active ?? true]);
+    'INSERT INTO products(name,water_price,active,team_id) VALUES($1,$2,$3,$4) RETURNING id,name,water_price,active',
+    [input.name.trim(), input.water_price, input.active ?? true,user.team_id]);
   await audit(tx, user, 'product.created', product.id, product);
   return product;
 }
@@ -17,18 +24,21 @@ export async function createProduct(tx, user, input) {
 export async function editProduct(tx, user, id, input) {
   const product = await one(tx, `UPDATE products SET name=COALESCE($2,name),
     water_price=COALESCE($3,water_price),active=COALESCE($4,active)
-    WHERE id=$1 RETURNING id,name,water_price,active`, [id, input.name?.trim()??null, input.water_price??null, input.active??null]);
+    WHERE id=$1 AND team_id=$5 RETURNING id,name,water_price,active`,
+    [id, input.name?.trim()??null, input.water_price??null, input.active??null,user.team_id]);
   ensure(product, 'Товар не найден', 404);
   await audit(tx, user, 'product.updated', id, product);
   return product;
 }
 
-export async function orderLines(tx, input, previousLines = []) {
-  const requested = input.items ?? [{ product_id: input.product_id ?? 1, water: input.water, water_price: input.water_price }];
+export async function orderLines(tx, input, teamId, previousLines = []) {
+  const previousId=previousLines.length===1?previousLines[0].product_id:null;
+  const requested = input.items ?? [{ product_id: input.product_id ?? previousId ?? await defaultProductId(tx,teamId),
+    water: input.water, water_price: input.water_price }];
   ensure(requested.length > 0, 'Добавьте воду в заказ', 400);
   const ids = requested.map(item => item.product_id);
   ensure(new Set(ids).size === ids.length, 'Укажите каждый вид воды одной строкой', 400);
-  const available = await rows(tx, 'SELECT id,name,water_price,active FROM products WHERE id=ANY($1::int[])', [ids]);
+  const available = await rows(tx, 'SELECT id,name,water_price,active FROM products WHERE id=ANY($1::int[]) AND team_id=$2', [ids,teamId]);
   const byId = new Map(available.map(p => [p.id,p]));
   const prior = new Map(previousLines.map(item => [item.product_id,item]));
   const lines = requested.map(item => {

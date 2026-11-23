@@ -11,6 +11,7 @@ const config = { ...configuration(), timezone: 'Europe/Moscow', address: '', lat
 const password = 'fixture-password-19';
 const accounts = {};
 const placeQueries = [];
+const roadQueries = [];
 let db, server, origin, today, tomorrow, now, seededCounts;
 
 // Фактическая дата тестового сида привязана к дню инициализации. Часы API управляемы.
@@ -50,7 +51,14 @@ before(async () => {
   seededCounts = await inspectSeed();
   ({ today, tomorrow } = calendar(config));
   now = localTime('12:00');
-  server = createApp({ db, config:{...config,geocoder:{...config.geocoder,enabled:true}}, clock: () => now,
+  server = createApp({ db, config:{...config,geocoder:{...config.geocoder,enabled:true},roadRouter:{...config.roadRouter,enabled:true}}, clock: () => now,
+    roadFetch:async url=>{
+      const coordinates=decodeURIComponent(url.pathname.split('/').at(-1)).split(';').map(s=>s.split(',').map(Number));
+      roadQueries.push(coordinates);
+      const legs=coordinates.slice(1).map(()=>({distance:100,duration:30}));
+      return Response.json({code:'Ok',waypoints:coordinates.map(location=>({location})),routes:[{distance:legs.length*100,
+        duration:legs.length*30,legs,geometry:{type:'LineString',coordinates}}]});
+    },
     placeFetch:async url=>{
       placeQueries.push([...url.searchParams]);
       return Response.json({features:[{geometry:{type:'Point',coordinates:[20,10]},properties:{name:'Учебная улица'}}]});
@@ -79,13 +87,134 @@ function details(date = today) {
 
 const deliveryAccess = {
   alt_phone:'+7 (000) 000-12-34', entrance:'Со двора', unit:'Офис 12А', intercom:'Ключ 42',
-  access_instructions:'Охрана встречает у северных ворот', paid_entry:true,
+  access_instructions:'Охрана встречает у северных ворот', paid_entry:true,parking_minutes:6,has_cart:true,
 };
+
+test('Досрочная доставка действует только в день согласия и сохраняет исходную дату при неудачном назначении',async()=>{
+  const initial=now;
+  now=new Date(localTime('12:00').getTime()+79*86400000);
+  const {today:early,tomorrow:due}=calendar(config,now);
+  try{
+    for(const parking_minutes of [-1,121,1.5]){
+      assert.equal((await http('POST','/orders','operator',{...details(due),parking_minutes})).status,400);
+    }
+    const fields={...details(due),parking_minutes:5,has_cart:true,can_deliver_today:true};
+    const {id}=await post('operator','/orders',fields);
+    const future=await day('dispatcher',due);
+    const order=future.orders.find(o=>o.id===id);
+    assert.deepEqual([order.date,order.early_delivery_date,order.can_deliver_today],[due,early,true]);
+    assert.ok((await day('dispatcher',early)).early_orders.some(o=>o.id===id));
+    assert.deepEqual((await day('operator',early)).early_orders,[]);
+    const bring=(user,version)=>http('POST','/orders/'+id+'/bring-forward',user,{version},randomUUID());
+    assert.equal((await bring('operator',order.version)).status,403);
+    assert.equal((await bring('dispatcher',order.version)).status,409);
+    assert.deepEqual((await day('dispatcher',due)).orders.find(o=>o.id===id),order);
+    const {vehicles}=await success(http('GET','/resources','dispatcher'));
+    const shift=await post('dispatcher','/shifts',{date:early,driver_id:accounts.driver1.user.id,vehicle_id:vehicles[0].id,start_min:600,end_min:1170});
+    await post('driver1','/shifts/'+shift.id+'/confirm',{});
+    assert.equal((await bring('dispatcher',order.version+1)).status,409);
+    await success(bring('dispatcher',order.version));
+    const moved=(await day('dispatcher',early)).orders.find(o=>o.id===id);
+    assert.deepEqual([moved.status,moved.date,moved.window_start,moved.window_end,moved.parking_minutes,moved.has_cart],
+      ['assigned',early,fields.window_start,fields.window_end,5,true]);
+    const later=new Date(now.getTime()+2*86400000).toISOString().slice(0,10);
+    const other=await post('operator','/orders',{...fields,date:later});
+    now=new Date(now.getTime()+86400000);
+    assert.equal((await day('dispatcher',due)).early_orders.some(o=>o.id===other.id),false);
+    assert.equal((await http('POST','/orders/'+other.id+'/bring-forward','dispatcher',{version:1})).status,409);
+  }finally{now=initial;}
+});
+test('Срочное назначение сохраняет факты рейса и атомарно конкурирует с продажей последней свободной бутыли',async()=>{
+  const initial=now;
+  now=new Date(localTime('12:00').getTime()+60*86400000);
+  const {today:date}=calendar(config,now);
+  try{
+    const {vehicles}=await success(http('GET','/resources','dispatcher'));
+    const {id:shift_id}=await post('dispatcher','/shifts',{date,vehicle_id:vehicles[0].id,driver_id:accounts.driver1.user.id,
+      start_min:600,end_min:1080,has_loader:false});
+    await post('driver1',`/shifts/${shift_id}/confirm`,{});
+    const create=(fields={})=>post('operator','/orders',{...details(date),water:1,new_shells:0,...fields});
+    const a=await create({window_end:835}),b=await create({window_end:860}),late=await create({window_start:900});
+    await post('dispatcher','/plan',{date});
+    const start=await day('driver1',date),trip=start.trips[0];
+    const lookup=(snapshot,id)=>snapshot.orders.find(o=>o.id===id);
+    await post('driver1',`/trips/${trip.id}/start`,{actual_start:720,water:4});
+    await post('driver1',`/orders/${a.id}/deliver`,{version:lookup(start,a.id).version,empty:1,paid:true});
+    await post('driver1',`/orders/${b.id}/fail`,{version:lookup(start,b.id).version,reason:'Закрыто'});
+    const afterOutcomes=await day('driver1',date);
+    const urgent=await create({window_end:780});
+    const assign=id=>http('POST','/plan','dispatcher',{date,shift_id,order_id:id},randomUUID());
+    assert.equal((await success(assign(urgent.id))).assigned,1);
+    const inserted=await day('driver1',date);
+    assert.equal(lookup(inserted,urgent.id).trip_id,trip.id);
+    assert.ok(lookup(inserted,urgent.id).position<lookup(inserted,late.id).position);
+    for(const id of [a.id,b.id])assert.deepEqual(lookup(inserted,id),lookup(afterOutcomes,id));
+    let balances=inserted.trips[0].stock_items[0];
+    assert.deepEqual([balances.water_left,balances.reserved_water],[3,2]);
+    const final=await create({window_end:780});
+    const sale={customer_order_id:a.id,water:1,water_price:19000,new_shells:0,empty:0,paid:true,payment_method:'cash'};
+    const [selling,allocation]=await Promise.all([http('POST',`/trips/${trip.id}/sale`,'driver1',sale,randomUUID()),assign(final.id)]);
+    const allocationResult=await success(allocation);
+    assert.ok([200,409].includes(selling.status));
+    assert.equal(allocationResult.assigned+(selling.ok?1:0),1);
+    const settled=await day('dispatcher',date);
+    assert.equal(settled.trips.length,1);
+    balances=settled.trips[0].stock_items[0];
+    assert.equal(balances.water_left,balances.reserved_water);
+    assert.equal(lookup(settled,final.id).status,selling.ok?'pending':'assigned');
+    for(const id of [a.id,b.id])assert.deepEqual(lookup(settled,id),lookup(afterOutcomes,id));
+  }finally{now=initial;}
+});
+test('Дорожный путь рабочего рейса доступен офису и только назначенному водителю после публикации',async()=>{
+  const initial=now;
+  const work=new Date(localTime('12:00').getTime()+55*86400000);
+  now=work;
+  const {tomorrow:date}=calendar(config,now);
+  try{
+    const demo='/road-routes/example/demo-0';
+    const publicExample=await success(http('GET',demo));
+    assert.equal(publicExample.status,'ready');
+    assert.equal(publicExample.has_base,false);
+    assert.equal((await http('GET','/road-routes/example/unknown','operator')).status,404);
+    const example=await success(http('GET',demo,'driver2'));
+    assert.equal(example.status,'ready');assert.equal(example.has_base,false);
+    assert.equal(example.legs[0].from_id,'demo-0-0');
+    const {vehicles}=await success(http('GET','/resources','dispatcher'));
+    const {id:shift_id}=await post('dispatcher','/shifts',{date,vehicle_id:vehicles[0].id,driver_id:accounts.driver1.user.id,
+      start_min:600,end_min:1200,has_loader:false});
+    await post('driver1',`/shifts/${shift_id}/confirm`,{});
+    const a=await post('operator','/orders',{...details(date),latitude:5,longitude:10});
+    const b=await post('operator','/orders',{...details(date),latitude:5.002,longitude:10.01});
+    for(const order of [a,b])await post('dispatcher','/plan',{date,order_id:order.id,shift_id});
+    const snapshot=await day('dispatcher',date),trip=snapshot.trips[0];
+    const calendarPath='/order-calendar?start='+date;
+    const countOnDate=async user=>(await success(http('GET',calendarPath,user))).days.find(d=>d.date===date)?.count??0;
+    const ownArchive=async user=>(await success(http('GET','/order-archive',user))).orders.filter(o=>o.date===date);
+    assert.equal(await countOnDate('dispatcher'),2);
+    assert.equal(await countOnDate('driver1'),0);
+    assert.deepEqual(await ownArchive('driver1'),[]);
+    const path='/road-routes/trip/'+trip.id;
+    assert.equal((await http('GET',path)).status,401);
+    assert.equal((await http('GET',path,'driver1')).status,403);
+    assert.equal((await http('GET',path,'driver2')).status,404);
+    assert.equal(roadQueries.length,1);
+    const office=await success(http('GET',path,'manager'));
+    assert.equal(office.status,'ready');
+    const positions=snapshot.orders.sort((x,y)=>x.position-y.position);
+    assert.deepEqual(office.legs.map(l=>[l.from_id,l.to_id]),[[String(positions[0].id),String(positions[1].id)]]);
+    now=new Date(work.getTime()+6*3600000);
+    assert.deepEqual(await success(http('GET',path,'driver1')),office);
+    assert.equal(await countOnDate('driver1'),2);
+    assert.equal(await countOnDate('driver2'),0);
+    assert.deepEqual((await ownArchive('driver1')).map(o=>o.id),[b.id,a.id]);
+    assert.deepEqual(await ownArchive('driver2'),[]);
+    assert.equal(roadQueries.length,2);
+  }finally{now=initial;}
+});
 test('Адресный поиск доступен офису по запросу, передаёт Photon только адрес и размер выдачи',async()=>{
   const endpoint='/places?q='+encodeURIComponent('Учебная улица');
   assert.equal((await http('GET',endpoint)).status,401);
   assert.equal((await http('GET',endpoint,'driver1')).status,403);
-  assert.equal((await http('GET',endpoint,'manager')).status,403);
   assert.equal((await http('GET','/places?q=ab','operator')).status,400);
   assert.equal((await http('GET','/places?q='+'a'.repeat(201),'dispatcher')).status,400);
   for(const query of ['Учебная ул., 5, +7 (000) 000-00-00','Учебный проезд, 1, домофон: 123']){
@@ -95,6 +224,7 @@ test('Адресный поиск доступен офису по запрос�
   const result=await success(http('GET',endpoint+'&phone=70000000&intercom=1234','operator'));
   assert.deepEqual(result,{places:[{label:'Учебная улица',lat:10,lon:20}]});
   assert.deepEqual(await success(http('GET',endpoint,'dispatcher')),result);
+  assert.deepEqual(await success(http('GET',endpoint,'manager')),result);
   assert.deepEqual(placeQueries,[[['q','Учебная улица'],['limit','5']]]);
 });
 function checkAccess(order, expected = deliveryAccess) {

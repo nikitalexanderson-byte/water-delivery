@@ -34,6 +34,13 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
       refresh();
     }catch(err){setError(err.message);refresh();}finally{setBusy(false);}
   }
+  async function bringForward(order){
+    setBusy(true);setError('');setMessage('');
+    try{
+      await send('/orders/'+order.id+'/bring-forward',{version:order.version});
+      setMessage('Заказ №'+order.id+' перенесён на сегодня и назначен на рейс.');
+    }catch(err){setError(err.message);}finally{refresh();setBusy(false);}
+  }
   const base=config.base_address||'Производство в Сальково';
   const problems=queue.filter(o=>o.reason||!o.address_verified).length;
   return <>{error&&<p className="error" role="alert">{error}</p>}{message&&<p role="status" className="success">{message}</p>}
@@ -57,11 +64,19 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
           {extraSales.filter(s=>s.source_order_id===o.id).map(s=><div key={s.id}><button className="link-button" onClick={()=>onOpen(s.id)}>Продажа на месте №{s.id} · <span className="measure">{s.water} бут.</span></button></div>)}
         </div></li>)}
         <li className="base-stop"><span className="stop-time">{minuteText(t.actual_return)}</span><span className="point-marker"><Icon name="pin" size={15}/></span><div><strong>Возврат на базу</strong><small>{base}</small></div></li></ol>
+        {extraSales.some(s=>s.source_order_id==null)&&<section aria-label="Продажи вне плановых остановок"><h4>Продажи вне плановых остановок</h4>
+          {extraSales.filter(s=>s.source_order_id==null).map(s=><div key={s.id}><button className="link-button" onClick={()=>onOpen(s.id)}>№ {s.id} · {s.name} · <span className="measure">{s.water} бут.</span></button></div>)}</section>}
         </article>;
       })}<p className="model-note"><Icon name="time" size={14}/>Время прибытия рассчитано тестовой моделью.</p></div>:<Empty title="Рейсы ещё не сформированы" detail="После распределения здесь появятся остановки и время прибытия."/>}
     </section>
     <section className="panel queue-panel" id="dispatch-queue"><div className="panel-head"><div><h2>Очередь распределения <span>{queue.length}</span></h2>{problems>0&&<small>Требуют проверки · {problems}</small>}</div></div>
     {canPlan&&<div className="plan-action"><button className="primary" disabled={!queue.length||busy} onClick={()=>plan()}><Icon name="routes"/>{busy?'Идёт подбор…':'Распределить заказы'}</button></div>}
     {queue.length?<div className="queue">{queue.map(o=><PendingOrder key={o.id} order={o} shifts={shifts} onAssign={plan} onOpen={onOpen} canPlan={canPlan} working={busy}/>)}</div>:<Empty title="Все заказы обработаны"/>}
+    {canPlan&&date===config.today&&day.early_orders?.length>0&&<section className="early-orders" aria-label="Можно доставить сегодня">
+      <h3>Можно доставить сегодня</h3><p>Клиенты согласны на доставку раньше. Заказ перейдёт на сегодня, если для него найдётся рейс.</p>
+      {day.early_orders.map(o=><div className="queue-row" key={o.id}><div><strong>№ {o.id} · {o.name}</strong><small>{o.address}</small>
+        <small>Заказ на {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long'}).format(new Date(o.date+'T12:00:00'))} · {minuteText(o.window_start)}–{minuteText(o.window_end)} · <span className="measure">{o.water} бут.</span></small></div>
+        <button disabled={busy} onClick={()=>bringForward(o)}>Подобрать рейс на сегодня</button></div>)}
+    </section>}
     </section></div></>;
 }

@@ -108,4 +108,66 @@ class WorkspaceTest {
             assertTrue(PathParser().parsePathString(it.shape).toNodes().isNotEmpty())
         }
     }
+
+    @Test
+    fun crewCanBeChangedAfterPlanningAndBeforeFirstDeparture() {
+        val planned = listOf(trip.copy(status = "planned", startedAt = null))
+        assertTrue(day(status = "pending", trips = emptyList()).canEditCrew())
+        assertTrue(day(status = "confirmed", trips = planned).canEditCrew())
+        assertFalse(day(status = "active").canEditCrew())
+        assertFalse(day(status = "confirmed", trips = planned + trip.copy(status = "returned")).canEditCrew())
+    }
+
+    @Test
+    fun choosesMttWhenInstalledAndRespectsDriverOverride() {
+        val installed = listOf("com.example.dialer", MTT_PACKAGE)
+        assertEquals(MTT_PACKAGE, dialChoice(null, installed))
+        assertEquals("com.example.dialer", dialChoice("com.example.dialer", installed))
+        assertEquals("ask", dialChoice("ask", installed))
+        assertEquals("system", dialChoice("system", installed))
+        assertEquals("system", dialChoice(MTT_PACKAGE, emptyList()))
+    }
+
+    @Test
+    fun newOnSiteCustomerRequiresContactAddressAndCategory() {
+        assertNull(newSaleCustomer("Тест", "+7", "Адрес", "retail"))
+        assertNull(newSaleCustomer("Тест", "123456", "", "retail"))
+        val customer = newSaleCustomer(" Тест ", "+7 (000) 000-00-00", " Адрес ", "wholesale")!!
+        assertEquals("Тест", customer.getString("name"))
+        assertEquals("Адрес", customer.getString("address"))
+        assertEquals("wholesale", customer.getString("category"))
+    }
+
+    @Test
+    fun remindersOnlyCoverUpcomingPublishedOfficeOrders() {
+        val day = day(stops = listOf(stop(1,"assigned"), stop(2,"delivered"), stop(3,"assigned").copy(onSite = true)))
+        val whenToCall = callTime("2026-11-23", 570, "Europe/Moscow")
+        assertEquals(mapOf(1 to whenToCall), callSchedule(day, "2026-11-23", "Europe/Moscow", whenToCall))
+        assertTrue(callSchedule(day, "2026-11-23", "Europe/Moscow", whenToCall + 90 * 60_000).isEmpty())
+        assertTrue(callSchedule(day.copy(shift = shift.copy(published = false)), "2026-11-23", "Europe/Moscow", whenToCall).isEmpty())
+    }
+
+    @Test
+    fun standaloneSaleIsAccountedWithoutScheduledEtaOrStopPosition() {
+        val data = JSONObject("""{"shifts":[],"trips":[],"reports":[],"orders":[{"id":8,"trip_id":7,
+          "position":null,"version":2,"window_start":480,"window_end":720,"eta":null,"water":1,
+          "new_shells":0,"water_price":10000,"shell_price":25000,"total":10000,"status":"delivered",
+          "paid":true,"origin":"on_site","source_order_id":null}]}""")
+        val sale = Day.parse(data).stops.single()
+        assertTrue(sale.paid && sale.onSite)
+        assertNull(sale.sourceOrderId)
+        val completed = day(stops = listOf(sale))
+        assertTrue(completed.mapTrips(7).single().points.isEmpty())
+        assertEquals("return", completed.focus(true).kind)
+    }
+
+    @Test
+    fun onlyExplicitlyUnassignedAccountsNeedToAcceptAnInvitation() {
+        assertTrue(needsTeamInvite(json("role" to "driver", "team_id" to JSONObject.NULL)))
+        assertFalse(needsTeamInvite(json("role" to "driver", "team_id" to 2)))
+        assertFalse(needsTeamInvite(json("role" to "driver")))
+        assertEquals("local:5", accountScope("local", json("id" to 5)))
+        assertNotEquals(accountScope("local", json("id" to 5, "team_id" to 1)),
+            accountScope("local", json("id" to 5, "team_id" to 2)))
+    }
 }

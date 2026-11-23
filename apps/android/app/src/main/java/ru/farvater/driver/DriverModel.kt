@@ -12,6 +12,12 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.UUID
 
+internal fun needsTeamInvite(user: JSONObject) = user.has("team_id") && user.isNull("team_id")
+internal fun accountScope(server: String, user: JSONObject): String {
+    val original = "$server:${user.getInt("id")}"
+    return if (user.isNull("team_id")) original else "$original:team:${user.getInt("team_id")}"
+}
+
 internal class DriverModel(app: Application) : AndroidViewModel(app) {
     private val api = DriverApi()
     private val store = SecureStore(app)
@@ -26,10 +32,13 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         theme=mode
     }
     private var token = ""
-    private var actor = 0
+    val roads = RoadRepository { path -> api.call(path, token, readTimeoutMs = 35_000) }
+    private var account = ""
     var name by mutableStateOf("")
         private set
     var signedIn by mutableStateOf(false)
+        private set
+    var invitationRequired by mutableStateOf(false)
         private set
     var busy by mutableStateOf(false)
         private set
@@ -49,6 +58,8 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         private set
     var base by mutableStateOf("")
         private set
+    var shellPrice by mutableStateOf<Long?>(null)
+        private set
     var mapBase by mutableStateOf(MapBase())
         private set
     var pending by mutableStateOf<JSONObject?>(null)
@@ -56,27 +67,34 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
 
     init {
         runCatching { store.get("session:$scope") }.getOrNull()?.let { session ->
-            restoreSession(session)
-            loadCached()
-            refresh()
+            if (needsTeamInvite(session.getJSONObject("user"))) {
+                store.put("session:$scope", null)
+                reminders.clear()
+                invitationRequired = true
+            } else {
+                restoreSession(session)
+                loadCached()
+                refresh()
+            }
         }
     }
 
     private fun restoreSession(session: JSONObject) {
         token = session.getString("token")
         val user = session.getJSONObject("user")
-        actor = user.getInt("id")
+        account = accountScope(scope, user)
         name = user.getString("name")
-        pending = store.get("write:$scope:$actor")
+        pending = store.get("write:$account")
         signedIn = true
     }
     private fun loadCached() {
-        store.get("day:$scope:$actor")?.let {
+        store.get("day:$account")?.let {
             day = Day.parse(it.getJSONObject("data"))
             date = it.getString("date")
             today = it.getString("today")
             tomorrow = it.getString("tomorrow")
             base = it.optString("base")
+            shellPrice = it.optLong("shell_price", -1).takeIf { value -> value >= 0 }
             mapBase = MapBase.from(it.optJSONObject("map") ?: JSONObject())
             offline = true
         }
@@ -110,11 +128,12 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         }
     }
     private fun forgetSession() {
+        roads.clear()
         reminders.clear()
         store.put("session:$scope", null)
-        store.put("day:$scope:$actor", null)
+        store.put("day:$account", null)
         token = ""
-        actor = 0
+        account = ""
         signedIn = false
         day = null
         pending = null
@@ -123,12 +142,24 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         today = ""
         tomorrow = ""
         base = ""
+        shellPrice = null
         mapBase = MapBase()
         offline = false
     }
     fun login(email: String, password: String) = action {
+        invitationRequired = false
         val session = api.call("login", body = json("email" to email.trim(), "password" to password))
-        if (session.getJSONObject("user").getString("role") != "driver") {
+        val user = session.getJSONObject("user")
+        if (needsTeamInvite(user)) {
+            invitationRequired = true
+            try {
+                api.call("logout", session.getString("token"), JSONObject())
+            } catch (_: IOException) {
+                // The unused token remains solely on the server until expiry.
+            }
+            return@action
+        }
+        if (user.getString("role") != "driver") {
             api.call("logout", session.getString("token"), JSONObject())
             throw ApiError(403, "Для приложения нужен профиль экспедитора")
         }
@@ -152,10 +183,11 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         message = "Пароль изменён. Войдите с новым паролем."
     }
     private suspend fun update(chosen: String? = null, announceChanges: Boolean = true) {
-        val config = api.call("config")
+        val config = api.call("config", token)
         today = config.getString("today")
         tomorrow = config.getString("tomorrow")
         base = if (config.isNull("base_address")) "" else config.getString("base_address")
+        shellPrice = config.optLong("shell_price", -1).takeIf { it >= 0 }
         mapBase = MapBase.from(config)
         val selected = chosen ?: pending?.optString("date") ?: date.takeIf { it == today || it == tomorrow } ?: today
         if (date != selected) day = null
@@ -170,8 +202,9 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         }
         day = updatedDay
         reminders.sync(updatedDay, selected, config.getString("timezone"))
-        store.put("day:$scope:$actor", json("date" to selected, "today" to today,
-            "tomorrow" to tomorrow, "base" to base, "map" to mapBase.json(), "data" to data))
+        store.put("day:$account", json("date" to selected, "today" to today,
+            "tomorrow" to tomorrow, "base" to base, "shell_price" to (shellPrice ?: JSONObject.NULL),
+            "map" to mapBase.json(), "data" to data))
         offline = false
     }
     fun refresh(chosen: String? = null) = action { update(chosen) }
@@ -183,7 +216,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         val command = json("path" to path, "body" to body, "key" to UUID.randomUUID().toString(),
             "date" to date, "label" to label)
         // Persist before dispatch, including the original body and order version.
-        store.put("write:$scope:$actor", command)
+        store.put("write:$account", command)
         pending = command
         send(command)
         saved()
@@ -195,13 +228,13 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
             api.call(command.getString("path"), token, command.getJSONObject("body"), command.getString("key"))
         } catch (e: ApiError) {
             if (e.status in 400..499 && e.status !in listOf(401, 408, 429)) {
-                store.put("write:$scope:$actor", null)
+                store.put("write:$account", null)
                 pending = null
                 runCatching { update() }
             }
             throw e
         }
-        store.put("write:$scope:$actor", null)
+        store.put("write:$account", null)
         pending = null
         message = command.getString("label")
         try {

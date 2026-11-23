@@ -140,6 +140,8 @@ internal fun ShiftView(
         }
     }
     if (shift != null) {
+        if (trip?.status == "active")
+            NewSaleAction(day, trip, locked) { run(ShiftFocus("new_sale", trip.id)) }
         val office = day.stops.filter { !it.onSite }
         if (office.isNotEmpty())
             CardBlock {
@@ -159,6 +161,10 @@ internal fun ShiftView(
             PairLine("Автомобиль", shift.vehicle)
             PairLine("Рабочее время", "${clock(shift.start)}–${clock(shift.end)}")
             PairLine("Экипаж", if (shift.loader) "С грузчиком" else "Без грузчика")
+            if (shift.status == "confirmed" && day.canEditCrew())
+                Setting(Mark.Person, "Изменить состав экипажа", enabled = !locked) {
+                    run(ShiftFocus("crew", shift.id))
+                }
         }
     }
 }
@@ -270,18 +276,22 @@ internal fun PointView(
     CardBlock {
         if (stop.status == "assigned") {
             PairLine("Расчётное прибытие", clock(stop.eta))
-            listOf("Позвонить" to stop.phone, "Дополнительный номер" to stop.altPhone)
+            listOf("Основной телефон" to stop.phone, "Дополнительный телефон" to stop.altPhone)
                 .filter { it.second.isNotBlank() }
                 .forEach { (label, number) ->
-                    Setting(Mark.Phone, label, number) {
-                        runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", number, null))
-                                )
-                            }
-                            .onFailure { error = "Наберите $number в приложении телефона." }
+                    Button(onClick = {
+                        error = if (openDialApp(context, number)) "" else "Наберите $number в приложении телефона."
+                    }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2762C2), contentColor = Color.White)) {
+                        Symbol(Mark.Phone, size = 18)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(label, style = MaterialTheme.typography.labelMedium)
+                            Text(number, style = MaterialTheme.typography.titleMedium)
+                        }
                     }
                 }
+            if (stop.phone.isNotBlank() || stop.altPhone.isNotBlank()) DialAppSetting()
             Setting(Mark.Pin, "Открыть адрес в картах") {
                 val location = Uri.parse("geo:0,0?q=${Uri.encode(stop.address)}")
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, location)) }
@@ -325,7 +335,7 @@ internal fun PointView(
         }
     }
     val extras =
-        day.stops.filter { it.onSite && it.tripId == trip.id && it.position == stop.position }
+        day.stops.filter { it.onSite && it.tripId == trip.id && it.sourceOrderId == stop.id }
     if (extras.isNotEmpty())
         CardBlock {
             Heading("Допродажи")
@@ -346,12 +356,24 @@ internal fun PointView(
         ) {
             Symbol(Mark.Plus)
             Spacer(Modifier.width(6.dp))
-            Text("Продажа из запаса")
+            Text("Заказ на месте этому клиенту")
         }
 }
 
 @Composable
-internal fun InventoryView(day: Day?) {
+private fun NewSaleAction(day: Day, trip: Trip, locked: Boolean, click: () -> Unit) {
+    val available = day.sales(trip).isNotEmpty()
+    OutlinedButton(onClick = click, enabled = !locked && available,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)) {
+        Symbol(Mark.Plus)
+        Spacer(Modifier.width(8.dp))
+        Text("Заказ на месте")
+    }
+    if (!available) Muted("Вся вода зарезервирована для точек маршрута.")
+}
+
+@Composable
+internal fun InventoryView(day: Day?, locked: Boolean, newSale: (Int) -> Unit) {
     Heading("Остатки и деньги", true)
     if (day == null || day.trips.isEmpty()) {
         CardBlock {
@@ -379,6 +401,13 @@ internal fun InventoryView(day: Day?) {
             val rows = trip.stock.filter { it.planned > 0 || it.left > 0 }
             rows.forEach { PairLine(it.name, "${if(planned)it.planned else it.left} бут.") }
             if (!planned) PairLine("Собрано пустой тары", "${trip.collected} шт.")
+            if (trip.status == "active") NewSaleAction(day, trip, locked) { newSale(trip.id) }
+            val sales = day.stops.filter { it.tripId == trip.id && it.onSite }
+            if (sales.isNotEmpty()) {
+                HorizontalDivider()
+                Text("Заказы на месте", fontWeight = FontWeight.SemiBold)
+                sales.forEach { PairLine(it.name, "${it.water} бут. · ${money(it.total)}") }
+            }
         }
     }
     val delivered = day.stops.filter { it.status == "delivered" }
@@ -392,7 +421,17 @@ internal fun InventoryView(day: Day?) {
 
 @Composable
 private fun SettlementView(report: Report) {
-    Feedback(if (report.matched) "Отчёт совпал" else "Отчёт не совпал", !report.matched)
+    Surface(shape = RoundedCornerShape(14.dp),
+        color = if (report.matched) Color(0xFF17673C) else Color(0xFF9F302E),
+        contentColor = Color.White) {
+        Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+            .padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Symbol(if (report.matched) Mark.Check else Mark.Info)
+            Text(if (report.matched) "Отчёт совпал" else "Отчёт не совпал",
+                style = MaterialTheme.typography.titleMedium)
+        }
+    }
     CardBlock {
         Heading("Вода и тара")
         report.stock.forEach {
@@ -509,6 +548,7 @@ internal fun AccountView(model: DriverModel, password: () -> Unit) {
         Heading("Связь")
         PairLine("Данные смены", if (model.offline) "Последняя копия" else "С сервера")
         Setting(Mark.Refresh, "Обновить данные", enabled = !model.busy) { model.refresh() }
+        DialAppSetting()
         ReminderPermission(model)
     }
     OutlinedButton(

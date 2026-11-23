@@ -8,6 +8,12 @@
 .atlas .measure { color:var(--measure); font-variant-numeric:tabular-nums; }
 .atlas-location { color:var(--sub); font-size:.9rem; line-height:1.5; }
 .atlas-location:not(:empty) { margin:0 0 12px; }
+.atlas-road { border-top:1px solid var(--line); padding:10px 0; display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; font-size:.88rem; color:var(--sub); }
+.road-numbers { display:flex; flex-wrap:wrap; gap:4px 20px; }
+.road-numbers strong { margin-left:4px; font-size:1rem; }
+.atlas-road p { margin:3px 0 0; line-height:1.45; }
+.atlas-road button { min-height:36px; }
+.atlas-leg { line-height:1.4; }
 .atlas>.empty { text-align:left; border-left:3px solid var(--line); margin:0 0 12px; padding:4px 12px; }
 .atlas>.empty p { margin:2px 0 0; }
 .atlas-note { margin:0 0 12px; }

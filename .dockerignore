@@ -2,5 +2,8 @@
 **/dist
 .git
 .env
+.env.*
+backups
+.playwright-cli
 .local
 apps/android

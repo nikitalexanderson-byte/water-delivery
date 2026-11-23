@@ -23,6 +23,7 @@ const altPhone=z.string().trim().max(24).refine(value=>{
 export const order=z.object({customer_id:id.optional(), name:text.optional(),phone:z.string().trim().regex(/^\+?[\d ()-]{6,24}$/).optional(),
   latitude:z.number().min(-90).max(90).nullish(),longitude:z.number().min(-180).max(180).nullish(),
   alt_phone:altPhone.optional(),entrance:z.string().trim().max(40).optional(),unit:z.string().trim().max(40).optional(),
+  parking_minutes:z.number().int().min(0).max(120).optional(),has_cart:z.boolean().optional(),can_deliver_today:z.boolean().optional(),
   intercom:z.string().trim().max(80).optional(),access_instructions:z.string().trim().max(1000).optional(),paid_entry:z.boolean().optional(),
   address:text.optional(),date,water:count.min(1).optional(),new_shells:count.default(0),water_price:price.optional(),
   items:basket.optional(),product_id:id.optional(),
@@ -50,8 +51,11 @@ export const product=z.object({name:text,water_price:price,active:z.boolean().op
 export const start=z.object({actual_start:minute,water:count.min(1),items:z.array(counted).optional()});
 export const complete=z.object({version:id,empty:count,paid:z.boolean()});
 export const failure=version.extend({reason:z.string().trim().min(1).max(500)});
-export const sale=z.object({customer_order_id:id,product_id:id.optional(),water:count.min(1),new_shells:count,water_price:price,
+export const sale=z.object({customer_order_id:id.optional(),
+  new_customer:z.object({name:text,phone:z.string().trim().regex(/^\+?[\d ()-]{6,24}$/),address:text,category:z.enum(['retail','wholesale'])}).optional(),
+  product_id:id.optional(),water:count.min(1),new_shells:count,water_price:price,
   payment_method:z.enum(['cash','bank']),company:z.string().trim().max(200).default(''),paid:z.boolean(),empty:count})
+  .refine(x=>Boolean(x.customer_order_id)!==Boolean(x.new_customer),'Укажите точку рейса или нового клиента')
   .refine(x=>x.new_shells<=x.water,'Новой тары больше, чем воды')
   .refine(x=>x.payment_method!=='bank'||x.company,'Для безнала укажите компанию');
 export const returned=z.object({actual_return:minute});

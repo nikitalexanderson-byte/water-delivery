@@ -5,6 +5,7 @@ import {createApp} from '../../apps/api/src/app.js';
 
 const db=await database({memory:true});
 const config={...configuration(),timezone:'Europe/Moscow',price:35000,mapTilesEnabled:process.env.MAP_TILES_ENABLED==='true'};
+config.roadRouter.enabled=process.env.ROAD_ROUTER_ENABLED==='true';
 await seed(db,config,'e2e-farvater-local');
 const {today}=calendar(config);
 // Freeze the dispatch clock before the early shift; seed dates match the real calendar day.

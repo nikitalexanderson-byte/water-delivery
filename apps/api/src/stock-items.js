@@ -1,5 +1,6 @@
 import {rows} from './db.js';
 import {ensure} from './auth.js';
+import {defaultProductId} from './products.js';
 
 // A driver gets only the IDs selected by the ownership check in dayView/ownTrip.
 export async function tripStock(tx,tripIds){
@@ -13,20 +14,22 @@ export async function tripStock(tx,tripIds){
     WHERE e.trip_id=ANY($1::int[])
   ) SELECT m.trip_id,p.id AS product_id,p.name,SUM(planned)::int AS planned_water,
     SUM(reserved)::int AS reserved_water,SUM(on_board)::int AS water_left
-    FROM movements m JOIN products p ON p.id=m.product_id GROUP BY m.trip_id,p.id,p.name ORDER BY m.trip_id,p.id`,[tripIds]);
+    FROM movements m JOIN trips t ON t.id=m.trip_id JOIN shifts s ON s.id=t.shift_id
+    JOIN accounts a ON a.id=s.driver_id JOIN products p ON p.id=m.product_id AND p.team_id=a.team_id
+    GROUP BY m.trip_id,p.id,p.name ORDER BY m.trip_id,p.id`,[tripIds]);
 }
 
-export async function countedItems(tx,input,known,allowArchived){
+export async function countedItems(tx,input,known,allowArchived,teamId){
   let entries=input.items;
   if(!entries){
     // Legacy clients can safely count a single SKU. Never infer a brand split from an aggregate.
     ensure(known.length<=1,'Укажите количество отдельно по каждому наименованию',400);
-    entries=input.water?[{product_id:known[0]?.product_id??1,water:input.water}]:[];
+    entries=input.water?[{product_id:known[0]?.product_id??await defaultProductId(tx,teamId),water:input.water}]:[];
   }
   const counts=new Map(entries.map(i=>[i.product_id,i.water]));
   ensure(counts.size===entries.length,'Наименование указано дважды',400);
   ensure(entries.reduce((sum,i)=>sum+i.water,0)===input.water,'Сумма позиций расходится с общим количеством воды',400);
-  const products=await rows(tx,'SELECT id,name,active FROM products WHERE id=ANY($1::int[])',[[...counts.keys()]]);
+  const products=await rows(tx,'SELECT id,name,active FROM products WHERE id=ANY($1::int[]) AND team_id=$2',[[...counts.keys()],teamId]);
   ensure(products.length===counts.size,'В списке есть неизвестное наименование воды',400);
   for(const p of products) ensure(allowArchived||p.active||known.some(row=>row.product_id===p.id),'Товар снят с продажи: '+p.name);
   return {counts,products};
@@ -38,11 +41,11 @@ export async function recordItems(tx,inventoryId,entries,sign){
     SELECT $1,product_id,delta FROM jsonb_to_recordset($2::jsonb) AS item(product_id int,delta int)`,[inventoryId,JSON.stringify(values)]);
 }
 
-export async function reconcileStock(tx,shiftId,input){
+export async function reconcileStock(tx,shiftId,input,teamId){
   const balances=await rows(tx,`SELECT p.id AS product_id,p.name,sum(i.full_delta)::int AS expected
     FROM inventory_items i JOIN products p ON i.product_id=p.id JOIN inventory e ON i.inventory_id=e.id
-    JOIN trips t ON t.id=e.trip_id WHERE t.shift_id=$1 GROUP BY p.id,p.name ORDER BY p.id`,[shiftId]);
-  const {counts,products}=await countedItems(tx,input,balances,true);
+    JOIN trips t ON t.id=e.trip_id WHERE t.shift_id=$1 AND p.team_id=$2 GROUP BY p.id,p.name ORDER BY p.id`,[shiftId,teamId]);
+  const {counts,products}=await countedItems(tx,input,balances,true,teamId);
   const byId=new Map(balances.map(row=>[row.product_id,row]));
   for(const p of products){
     if(!byId.has(p.id)) byId.set(p.id,{product_id:p.id,name:p.name,expected:0});

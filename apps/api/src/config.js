@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import {sheetsConfiguration} from './sheets.js';
 
 const number = (key, fallback, min = 0, max = 100000) =>
   z.coerce.number().min(min).max(max).parse(process.env[key] || fallback);
@@ -23,7 +24,19 @@ export function configuration() {
     throw Error('GEOCODER_URL должен указывать на HTTP(S) endpoint Photon с путём /api/');
   }
   if (!geocoderUrl.pathname.endsWith('/')) geocoderUrl.pathname+='/';
-  return { timezone, address, lat, lon, mapTilesEnabled:enabled('MAP_TILES_ENABLED',true), price: number('DEMO_WATER_PRICE_KOP',35000),
+  const roadUrl=new URL(process.env.ROAD_ROUTER_URL || 'https://routing.openstreetmap.de/routed-car/');
+  if(!['https:','http:'].includes(roadUrl.protocol)||roadUrl.username||roadUrl.password||roadUrl.search||roadUrl.hash){
+    throw Error('ROAD_ROUTER_URL должен указывать на HTTP(S) endpoint OSRM');
+  }
+  const root=roadUrl.pathname.replace(/\/+$/,'');
+  roadUrl.pathname=/\/route\/v1\/[^/]+$/.test(root)?root+'/':root+'/route/v1/driving/';
+  return { timezone, address, lat, lon, sheets:sheetsConfiguration(),registrationEnabled:enabled('REGISTRATION_ENABLED',true),
+    trustProxyHops:z.coerce.number().int().min(0).max(2).parse(process.env.TRUST_PROXY_HOPS||0),
+    mapTilesEnabled:enabled('MAP_TILES_ENABLED',true), price: number('DEMO_WATER_PRICE_KOP',35000),
+    roadRouter:{enabled:enabled('ROAD_ROUTER_ENABLED',true),url:roadUrl.href,
+      minIntervalMs:z.coerce.number().int().min(1000).max(60000).parse(process.env.ROAD_ROUTER_MIN_INTERVAL_MS||1100),
+      timeoutMs:z.coerce.number().int().min(100).max(30000).parse(process.env.ROAD_ROUTER_TIMEOUT_MS||8000),
+      snapMeters:z.coerce.number().int().min(1).max(2000).parse(process.env.ROAD_ROUTER_SNAP_METERS||250)},
     geocoder: {enabled:enabled('GEOCODER_ENABLED',true),url:geocoderUrl.href,
       minIntervalMs:z.coerce.number().int().min(100).max(60000).parse(process.env.GEOCODER_MIN_INTERVAL_MS||1000),
       timeoutMs:z.coerce.number().int().min(100).max(30000).parse(process.env.GEOCODER_TIMEOUT_MS||5000)},
@@ -32,6 +45,8 @@ export function configuration() {
     routing: {legMinutes:number('DEMO_LEG_MINUTES',15,1),stopBase:number('STOP_BASE_MINUTES',8),
       stopPerBottle:number('STOP_PER_BOTTLE_MINUTES',0.7),reloadMinutes:number('RELOAD_MINUTES',20),
       floorMinutes:number('FLOOR_MINUTES',2),checkpointMinutes:number('CHECKPOINT_MINUTES',5),
+      cartFactor:number('CART_FACTOR',0.8,0.01,1),trafficFactor:number('TRAFFIC_FACTOR',1,1,10),
+      estimatedSpeedKmh:number('ESTIMATED_SPEED_KMH',28,1,130),estimatedRoadFactor:number('ESTIMATED_ROAD_FACTOR',1.4,1,10),
       loaderFactor:number('LOADER_FACTOR',0.75,0.01,1)} };
 }
 

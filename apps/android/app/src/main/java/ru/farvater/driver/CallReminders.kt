@@ -32,6 +32,13 @@ internal fun callTime(date: String, eta: Int, zone: String): Long =
 private const val CHANNEL = "customer-calls"
 private const val WINDOW = 90L * 60L * 1000L
 
+internal fun callSchedule(day: Day, date: String, zone: String, now: Long): Map<Int, Long> {
+    if (day.shift?.published != true) return emptyMap()
+    return day.stops.filter { !it.onSite && it.status == "assigned" }.associate {
+        it.id to callTime(date, it.eta, zone)
+    }.filterValues { it + WINDOW > now }
+}
+
 internal class CallReminders(private val context: Context) {
     // Non-sensitive schedule only. A row holds the route date, trigger time and whether it rang.
     private val prefs = context.getSharedPreferences("driver.alarms.v1", Context.MODE_PRIVATE)
@@ -67,8 +74,7 @@ internal class CallReminders(private val context: Context) {
     fun sync(day: Day, date: String, zone: String) {
         val now = Instant.now().toEpochMilli()
         val today = LocalDate.now(ZoneId.of(zone)).toString()
-        val scheduled = day.stops.filter { it.status == "assigned" && day.shift?.published == true }
-            .associate { it.id to callTime(date, it.eta, zone) }.filterValues { it + WINDOW > now }
+        val scheduled = callSchedule(day, date, zone, now)
         prefs.all.forEach { (key, state) ->
             val previous = state.toString().substringBefore('|')
             val id = key.toIntOrNull()

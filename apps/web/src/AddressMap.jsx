@@ -3,10 +3,10 @@ import React,{useEffect,useRef,useState} from 'react';
 const valid=(lat,lon)=>Number.isFinite(lat)&&Math.abs(lat)<=90&&Number.isFinite(lon)&&Math.abs(lon)<=180;
 const display=point=>point.lat.toFixed(6)+', '+point.lon.toFixed(6);
 
-export function AddressMap({config,get,latitude,longitude,save,close}){
+export function AddressMap({config,get,latitude,longitude,save,close,automatic=true,address=''}){
   const [point,setPoint]=useState(()=>latitude!==''&&longitude!==''&&valid(Number(latitude),Number(longitude))?
     {lat:Number(latitude),lon:Number(longitude)}:null);
-  const [query,setQuery]=useState('');
+  const [query,setQuery]=useState(address);
   const [options,setOptions]=useState([]);
   const [status,setStatus]=useState('');
   const [busy,setBusy]=useState(false);
@@ -47,7 +47,7 @@ export function AddressMap({config,get,latitude,longitude,save,close}){
     search.current?.abort();setBusy(false);setStatus('');setOptions([]);setQuery(value);
   }
   return <div className="address-map">
-    {config.geocoder_enabled!==false&&<>
+    {automatic&&config.geocoder_enabled!==false&&<>
       <label>Населённый пункт, улица и дом
         <input type="search" value={query} maxLength={200} placeholder="Например, Москва, Красная площадь"
           onChange={e=>updateQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>

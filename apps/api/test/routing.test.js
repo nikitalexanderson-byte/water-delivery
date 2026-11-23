@@ -138,3 +138,58 @@ test('После удаления точки прогноз показывает
     { shift_id: 1, number: 2, stops: [{ order_id: 5, position: 1, eta: 830 }] },
   ]);
 });
+
+const line = (product_id, water) => ({ product_id, water, name: 'Вода ' + product_id });
+const activeTrips = (fields = {}) => [
+  { shift_id: 1, number: 1, status: 'returned', actual_return: 600, stops: [] },
+  { shift_id: 1, number: 2, status: 'active', actual_start: 630,
+    stock_items: [{ product_id: 1, water_left: 11, reserved_water: 9 }, { product_id: 2, water_left: 10, reserved_water: 10 }],
+    stops: [], ...fields },
+];
+
+test('На ходу резервируется каждая марка, включая предыдущие вставки той же партии', () => {
+  const queue = [order(1, { water: 2, items: [line(1, 1), line(2, 1)] }),
+    order(2, { water: 2, items: [line(1, 2)] }), order(3, { water: 1, items: [line(1, 1)] })];
+  const result = run({ allowActive: true, nowMin: 650, trips: activeTrips(), orders: queue });
+  assert.deepEqual(result.trips.map(ids), [[2]]);
+  assert.deepEqual(result.unassigned.map(x => x.order_id), [1, 3]);
+  assert.match(result.unassigned[0].reason, /Вода 2/);
+  assert.match(result.unassigned[1].reason, /Вода 1/);
+});
+
+test('Срочная точка учитывает последний подтверждённый адрес, окно, въезд и возврат', () => {
+  const done = order(4, { position: 1, status: 'delivered' });
+  const middle = order(5, { position: 2, status: 'assigned' });
+  const failed = order(6, { position: 3, status: 'failed' });
+  const late = order(7, { position: 4, status: 'assigned', window_start: 755 });
+  const options = { allowActive: true, nowMin: 650, trips: activeTrips({ stops: [done, middle, failed, late], last_visit: done }),
+    orders: [order(1, { items: [line(1, 1)], window_end: 730 })],
+    mapProvider: { travelMinutes: (from, to) => (from?.id === 4 && to?.id === 5) ? 12 : 10 } };
+  const result = run(options);
+  assert.deepEqual(result.trips[0].stops,
+    [{ order_id: 5, position: 2, eta: 662 }, { order_id: 1, position: 4, eta: 677 }, { order_id: 7, position: 5, eta: 755 }]);
+  assert.match(reason(run({ ...options, shifts: [shift(1, { end_min: 768 })] })), /вернуться/);
+  assert.match(reason(run({ ...options, orders: [{ ...options.orders[0], height_limit_mm: 2600 }] })), /высота/);
+  assert.match(reason(run({ ...options, orders: [{ ...options.orders[0], window_end: 679 }] })), /окна/);
+  assert.deepEqual(run({ ...options, allowActive: false }).trips, []);
+});
+
+test('Для одной заявки сравниваются попутный активный и ещё стоящий на базе водитель', () => {
+  const last = order(20, { position: 1, status: 'delivered' });
+  const options = { allowActive: true, nowMin: 650, shifts: [shift(1), shift(2)], trips: activeTrips({ stops: [last] }),
+    orders: [order(1, { water: 1, items: [line(1, 1)] })] };
+  const choose = detour => run({ ...options, mapProvider: { travelMinutes: (from, to) =>
+    from?.id === 20 && to?.id === 1 ? detour : 10 } }).trips[0].shift_id;
+  assert.equal(choose(1), 1);
+  assert.equal(choose(50), 2);
+});
+
+test('Парковка и КПП добавляются полностью, тележка и грузчик влияют на работу, пробки на оба плеча', () => {
+  const options = { shifts: [shift(1, { has_loader: true, end_min: 529 })],
+    settings: { ...settings, stopBase: 4, stopPerBottle: 1, floorMinutes: 2, checkpointMinutes: 3,
+      loaderFactor: 0.75, cartFactor: 0.5, trafficFactor: 1.5 },
+    orders: [order(1, { water: 4, floor: 5, lift: false, checkpoint: true, has_cart: true, parking_minutes: 7, window_end: 514 })] };
+  assert.equal(run(options).trips[0].stops[0].eta, 495);
+  assert.match(reason(run({ ...options, orders: [{ ...options.orders[0], has_cart: false }] })), /окна/);
+  assert.match(reason(run({ ...options, shifts: [shift(1, { has_loader: true, end_min: 528 })] })), /вернуться/);
+});

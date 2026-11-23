@@ -65,3 +65,34 @@ jobs:
         run: docker compose logs
       - if: always()
         run: docker compose down
+  vps:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      SITE_ADDRESS: http://localhost
+      VPS_BIND: 127.0.0.1
+      VPS_HTTP_PORT: 19080
+      VPS_HTTPS_PORT: 19443
+      POSTGRES_DB: farvater_vps_ci
+      POSTGRES_USER: farvater_vps_ci
+      POSTGRES_PASSWORD: ci-only-password
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.vps.example .env.vps
+      - run: docker compose --env-file .env.vps -f deploy/compose.vps.yml config --quiet
+      - run: docker compose --env-file .env.vps -f deploy/compose.vps.yml up --build --wait --wait-timeout 150
+      - name: Verify the proxy and restore a fresh backup in a separate database
+        shell: bash
+        run: |
+          curl --retry 8 --retry-connrefused --retry-delay 1 -fsS http://localhost:19080/health/ready
+          curl -fsS http://localhost:19080/route-map/example.json > /dev/null
+          dump=$(bash deploy/backup.sh "$RUNNER_TEMP/farvater-backup")
+          compose=(docker compose --env-file .env.vps -f deploy/compose.vps.yml)
+          "${compose[@]}" exec -T db createdb -U "$POSTGRES_USER" farvater_restore
+          "${compose[@]}" exec -T db pg_restore --exit-on-error -U "$POSTGRES_USER" -d farvater_restore < "$dump"
+          "${compose[@]}" exec -T db psql -U "$POSTGRES_USER" -d farvater_restore -Atc 'SELECT count(*) FROM teams' | grep -Fx 1
+          "${compose[@]}" exec -T db psql -U "$POSTGRES_USER" -d farvater_restore -Atc 'SELECT count(*) FROM accounts' | grep -Fx 0
+      - if: failure()
+        run: docker compose --env-file .env.vps -f deploy/compose.vps.yml logs
+      - if: always()
+        run: docker compose --env-file .env.vps -f deploy/compose.vps.yml down

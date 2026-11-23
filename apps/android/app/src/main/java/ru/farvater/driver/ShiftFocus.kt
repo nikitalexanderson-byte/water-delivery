@@ -2,6 +2,9 @@ package ru.farvater.driver
 
 internal data class ShiftFocus(val kind: String, val id: Int = 0)
 
+internal fun Day.canEditCrew() = shift?.status in setOf("pending", "confirmed") &&
+    trips.all { it.status == "planned" && it.startedAt == null }
+
 internal fun Day.focus(today: Boolean): ShiftFocus {
     val shift = shift ?: return ShiftFocus("absent")
     if (shift.status == "closed") return ShiftFocus("report")

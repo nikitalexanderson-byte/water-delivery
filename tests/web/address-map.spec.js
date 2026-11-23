@@ -19,6 +19,11 @@ test('оператор находит адрес, уточняет отметк�
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Имя или организация').fill('Учебная доставка с отметкой');
   await dialog.getByLabel('Телефон',{exact:true}).fill('+70000000067');
+  await dialog.getByLabel('Автоопределение адреса').uncheck();
+  await dialog.getByRole('button',{name:'Выбрать точку на карте'}).click();
+  await expect(dialog.getByRole('button',{name:'Найти на карте'})).toHaveCount(0);
+  await dialog.getByRole('button',{name:'Отмена выбора'}).click();
+  await dialog.getByLabel('Автоопределение адреса').check();
   await dialog.getByRole('button',{name:'Выбрать точку на карте'}).click();
   const map=page.frameLocator('iframe[title="Выбор точки доставки на карте"]');
   await expect(map.locator('#canvas')).toBeVisible();

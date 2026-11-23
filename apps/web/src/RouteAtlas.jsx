@@ -1,6 +1,7 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {Icon,Empty} from './ui';
 import {minuteText} from './api';
+import {RoadLeg,RoadSummary,useRoadRoutes} from './RoadRoutes';
 import exampleTrips from '../../../packages/route-map/static/route-map/example.json';
 import './route-atlas.css';
 
@@ -59,7 +60,7 @@ function liveRoutes(day){
   });
 }
 
-export function RouteAtlas({day,config,onOpen,demo,setDemo}){
+export function RouteAtlas({day,config,get,onOpen,demo,setDemo}){
   const [chosen,setChosen]=useState(null);
   const [point,setPoint]=useState(null);
   const [focusRequest,setFocusRequest]=useState(0);
@@ -83,9 +84,13 @@ export function RouteAtlas({day,config,onOpen,demo,setDemo}){
   const shown=useMemo(()=>only&&active?[active]:trips,[only,active,trips]);
   const base=useMemo(()=>({label:config.base_address||'Производственная база',
     lat:config.base_lat,lon:config.base_lon}),[config]);
-  const payload=useMemo(()=>({trips:shown,base,activeTripId:active?.id??null,focusedStopId:selected?.id??null,
+  const {roads,retry}=useRoadRoutes({get,visible:shown,active,base,demo});
+  const road=roads[active?.id];
+  const incoming=new Map((road?.legs??[]).map(leg=>[String(leg.to_id),leg]));
+  const positions=new Map(active?.stops.map(stop=>[stop.id,stop.position]));
+  const payload=useMemo(()=>({trips:shown,roads,base,activeTripId:active?.id??null,focusedStopId:selected?.id??null,
     focusRequest,location,locationRequest,theme,tilesEnabled:config.map_tiles_enabled===true}),
-    [shown,base,active,selected,focusRequest,location,locationRequest,theme,config.map_tiles_enabled]);
+    [shown,roads,base,active,selected,focusRequest,location,locationRequest,theme,config.map_tiles_enabled]);
   const choosePoint=useCallback((trip,id)=>{
     if(!trips.find(t=>t.id===trip)?.stops.some(s=>s.id===id))return;
     setChosen(trip);setPoint(id);setFocusRequest(n=>n+1);
@@ -130,6 +135,7 @@ export function RouteAtlas({day,config,onOpen,demo,setDemo}){
         {!locating&&location&&<span>{locationError?' Последняя отметка':'Местоположение определено'} в {locationTime.format(locatedAt)} · точность <b className="measure">{number.format(Math.ceil(location.accuracy))} м</b></span>}
       </div>
       {!active&&<Empty title="На этот день рейсов пока нет" detail="Распределите заказы в разделе «Маршруты» или откройте учебный пример."/>}
+      {active&&<RoadSummary road={road} retry={retry}/>}
       <div className={'atlas-work'+(active&&listShown?'':' atlas-wide')}>
         {active&&listShown&&<aside className="atlas-list" aria-label="Остановки выбранного рейса">
           <div className="atlas-trip"><h2>{active.label}</h2><p>{active.crew}</p>
@@ -137,12 +143,14 @@ export function RouteAtlas({day,config,onOpen,demo,setDemo}){
           <ol>{active.stops.map(s=><li key={s.id}>
             <button aria-pressed={selected?.id===s.id} onClick={()=>choosePoint(active.id,s.id)}>
               <span className="atlas-number" style={{backgroundColor:palette[active.colorIndex]}}>{s.position}</span>
-              <span><strong>{s.address}</strong><small>{s.name} · <b className="measure">{s.water} бут.</b>{s.eta!=null?' · '+minuteText(s.eta):''}</small></span>
+              <span><strong>{s.address}</strong><small>{s.name} · <b className="measure">{s.water} бут.</b>{s.eta!=null?' · '+minuteText(s.eta):''}</small>
+                {incoming.has(s.id)&&<RoadLeg leg={incoming.get(s.id)} from={incoming.get(s.id).from_id==='base'?'От базы':'От точки '+positions.get(String(incoming.get(s.id).from_id))}/>}</span>
             </button>
             {selected?.id===s.id&&<div className="atlas-stop-actions">{s.phone&&<a href={'tel:'+s.phone.replace(/[^+0-9]/g,'')}>{s.phone}</a>}
               {!demo&&<button onClick={()=>onOpen(Number(s.id))}>Заказ № {s.id}</button>}</div>}
           </li>)}</ol>
-          <div className="atlas-external">{links.map(link=><a key={link.url} target="_blank" rel="noopener noreferrer" href={link.url}>{link.label} ↗</a>)}
+          <div className="atlas-external">{incoming.has('base')&&<RoadLeg leg={incoming.get('base')} from="Возврат на базу"/>}
+            {links.map(link=><a key={link.url} target="_blank" rel="noopener noreferrer" href={link.url}>{link.label} ↗</a>)}
             <small>{!links.length?'Для маршрута в Яндекс Картах укажите координаты остановок.':
               !validPoint(base)?'В ссылку входят только остановки. Координаты базы не заданы.':'Маршрут начинается и заканчивается на базе.'}</small></div>
         </aside>}

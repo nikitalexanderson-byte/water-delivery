@@ -176,7 +176,7 @@ internal fun withMetrics(value: String, tint: Color = MaterialTheme.colorScheme.
     buildAnnotatedString {
         append(value)
         val units =
-            Regex("""[+−-]?\d[\d\u00a0\u202f ]*(?:[,.]\d+)?\s*(?:₽|бут\.|шт\.|кг|мин\b|точ\.)""")
+            Regex("""[+−-]?\d[\d\u00a0\u202f ]*(?:[,.]\d+)?\s*(?:₽|бут\.|шт\.|кг|км|ч\b|мин\b|точ\.)""")
         units.findAll(value).forEach { m ->
             addStyle(
                 SpanStyle(color = tint, fontWeight = FontWeight.SemiBold),

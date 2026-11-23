@@ -7,6 +7,8 @@ export const demoRoutingDefaults = Object.freeze({
   floorMinutes: 2,
   checkpointMinutes: 5,
   loaderFactor: 0.75,
+  cartFactor: 0.8,
+  trafficFactor: 1,
 });
 
 const BOTTLE_KG = 20;
@@ -22,7 +24,8 @@ export function demoMapProvider(legMinutes) {
 function serviceTime(order, shift, rules) {
   const stairs = order.lift ? 0 : Math.max(0, (order.floor ?? 1) - 1) * rules.floorMinutes;
   const handling = order.water * rules.stopPerBottle + stairs;
-  return Math.ceil(rules.stopBase + handling * (shift.has_loader ? rules.loaderFactor : 1)
+  return Math.ceil(rules.stopBase + (order.parking_minutes ?? 0)
+    + handling * (shift.has_loader ? rules.loaderFactor : 1) * (order.has_cart ? rules.cartFactor : 1)
     + (order.checkpoint ? rules.checkpointMinutes : 0));
 }
 
@@ -39,6 +42,8 @@ function vehicleIssue(order, shift) {
 
 // Пересчитывается вся смена: вставка в первый рейс может сорвать окно во втором.
 // Фактический выезд и возвращение имеют приоритет над любым планом.
+const completed = order => order.status === 'delivered' || order.status === 'failed';
+
 function schedule(shift, trips, rules, map, nowMin, checkLimits = true) {
   let available = shift.start_min;
   let driving = 0;
@@ -54,49 +59,58 @@ function schedule(shift, trips, rules, map, nowMin, checkLimits = true) {
       finish = available;
       continue;
     }
-    const planned = trip.status === 'planned';
-    let time = trip.actual_start ?? Math.max(available, planned ? nowMin : shift.start_min);
-    let previous = BASE;
+    const active = trip.status === 'active';
+    // Для выехавшей машины отсчёт от последнего подтверждённого адреса.
+    // До первой отметки последним известным местом считается база.
+    let time = Math.max(trip.actual_start ?? available, nowMin);
+    let previous = active ? trip.last_visit ?? trip.stops.findLast(completed) ?? BASE : BASE;
+    const validate = checkLimits && (!active || trip.extended);
     let bottles = 0;
     const stops = [];
-    for (const order of trip.stops) {
-      if (planned && checkLimits) {
+    for (const [index, order] of trip.stops.entries()) {
+      if (active && completed(order)) continue;
+      if (validate) {
         const issue = vehicleIssue(order, shift);
         if (issue) return { issue };
       }
       bottles += order.water;
-      if (trip.status === 'active' && order.status !== 'delivered') time = Math.max(time, nowMin);
-      const leg = map.travelMinutes(previous, order);
+      const leg = Math.ceil(map.travelMinutes(previous, order) * rules.trafficFactor);
       driving += leg;
       const eta = Math.max(time + leg, order.window_start);
       time = eta + serviceTime(order, shift, rules);
-      if (planned && checkLimits && time > order.window_end) {
+      if (validate && time > order.window_end) {
         return { issue: 'Не хватает времени на доставку внутри окна клиента' };
       }
-      stops.push({ order_id: order.id, position: stops.length + 1, eta });
+      stops.push({ order_id: order.id, position: index + 1, eta });
       previous = order;
     }
-    if (planned && checkLimits && bottles * BOTTLE_KG > shift.capacity_kg - shift.extra_kg) {
+    if (!active && validate && bottles * BOTTLE_KG > shift.capacity_kg - shift.extra_kg) {
       return { issue: 'В рейсе недостаточно свободной грузоподъёмности' };
     }
-    const returnLeg = map.travelMinutes(previous, BASE);
+    const returnLeg = Math.ceil(map.travelMinutes(previous, BASE) * rules.trafficFactor);
     driving += returnLeg;
-    if (trip.status === 'active') time = Math.max(time, nowMin);
     available = time + returnLeg;
     finish = available;
-    if (planned && checkLimits && finish > shift.end_min) {
+    if (validate && finish > shift.end_min) {
       return { issue: 'Водитель не успеет вернуться на базу до конца смены' };
     }
-    if (planned) timetable.push({ shift_id: shift.id, number: trip.number, stops });
+    timetable.push({ shift_id: shift.id, number: trip.number, stops });
   }
   return { driving, finish, timetable };
 }
 
 // Пересчёт ETA уже закреплённых точек после удаления. Текущее опоздание не
 // должно блокировать отмену или перенос. Порядок рейсов и точек поступает из БД.
-export function retimeShift({ shift, trips, settings, nowMin }) {
+export function shiftSchedule({ shift, trips, settings, nowMin, checkLimits = true, refreshActive = false }) {
   const rules = { ...demoRoutingDefaults, ...settings };
-  return schedule(shift, trips, rules, demoMapProvider(rules.legMinutes), nowMin, false).timetable;
+  const result = schedule(shift, trips, rules, rules.mapProvider ?? demoMapProvider(rules.legMinutes), nowMin, checkLimits);
+  if (result.issue) return result;
+  return { timetable: result.timetable.filter(row => trips.some(t => t.number === row.number &&
+    (t.status === 'planned' || (refreshActive && t.status === 'active')))) };
+}
+
+export function retimeShift(options) {
+  return shiftSchedule({ ...options, checkLimits: false }).timetable;
 }
 
 function betterScore(a, b) {
@@ -110,7 +124,19 @@ function insertAt(list, index, item) {
   return [...list.slice(0, index), item, ...list.slice(index)];
 }
 
-function* candidates(shift, trips, order, rules, map, nowMin, reasons) {
+function reserveStock(trip, order) {
+  if (!order.items?.length) return { issue: 'Неизвестен состав заказа для сверки остатка на борту' };
+  const free = new Map(trip.freeStock ?? (trip.stock_items ?? []).map(item =>
+    [item.product_id, item.water_left - item.reserved_water]));
+  for (const item of order.items) {
+    const remaining = (free.get(item.product_id) ?? 0) - item.water;
+    if (remaining < 0) return { issue: 'Недостаточно свободного остатка на борту: ' + (item.name ?? 'вода №' + item.product_id) };
+    free.set(item.product_id, remaining);
+  }
+  return { freeStock: free };
+}
+
+function* candidates(shift, trips, order, rules, map, nowMin, reasons, allowActive) {
   const issue = vehicleIssue(order, shift);
   if (issue) {
     reasons.add(issue);
@@ -130,9 +156,13 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons) {
     : trips;
 
   for (const [index, trip] of templates.entries()) {
-    if (trip.status !== 'planned') continue;
-    for (let position = 0; position <= trip.stops.length; position++) {
-      const revisedTrip = { ...trip, stops: insertAt(trip.stops, position, order) };
+    const active = trip.status === 'active' && allowActive;
+    if (!active && trip.status !== 'planned') continue;
+    const stock = active ? reserveStock(trip, order) : {};
+    if (stock.issue) { reasons.add(stock.issue); continue; }
+    const first = active ? trip.stops.findLastIndex(completed) + 1 : 0;
+    for (let position = first; position <= trip.stops.length; position++) {
+      const revisedTrip = { ...trip, ...stock, extended: active, stops: insertAt(trip.stops, position, order) };
       const revised = [...trips];
       revised[index] = revisedTrip;
       const result = schedule(shift, revised, rules, map, nowMin);
@@ -140,7 +170,7 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons) {
         reasons.add(result.issue);
         continue;
       }
-      const eta = result.timetable.find(row => row.number === trip.number).stops[position].eta;
+      const eta = result.timetable.find(row => row.number === trip.number).stops.find(stop => stop.order_id === order.id).eta;
       let scheduleChange = 0;
       for (const route of result.timetable) {
         for (const stop of route.stops) {
@@ -153,10 +183,12 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons) {
       const score = [result.driving - baseline.driving + extraReload, result.finish - baseline.finish,
         (result.finish - shift.start_min) / Math.max(1, shift.end_min - shift.start_min),
         scheduleChange, eta, shift.id, trip.number, position];
-      yield { shiftId: shift.id, revised, timetable: result.timetable, score };
+      const timetable = result.timetable.filter(row =>
+        revised.some(t => t.number === row.number && (t.status === 'planned' || t.extended)));
+      yield { shiftId: shift.id, revised, timetable, score };
     }
   }
-  if (!addTrip && !trips.some(trip => trip.status === 'planned')) {
+  if (!addTrip && !trips.some(trip => trip.status === 'planned' || (allowActive && trip.status === 'active'))) {
     reasons.add('Оба рейса уже выполняются или завершены');
   }
 }
@@ -166,9 +198,9 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons) {
  * очереди, в trips[].stops — уже закреплённые. Результат содержит полные планы
  * открытых рейсов, в том числе прежние точки. Исходные объекты не изменяются.
  */
-export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId, nowMin = 0, mapProvider }) {
+export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId, nowMin = 0, mapProvider, allowActive = false }) {
   const rules = { ...demoRoutingDefaults, ...settings };
-  const map = mapProvider ?? demoMapProvider(rules.legMinutes);
+  const map = mapProvider ?? rules.mapProvider ?? demoMapProvider(rules.legMinutes);
   const byShift = new Map();
   const timetable = new Map();
   const seen = new Set();
@@ -195,7 +227,7 @@ export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId
     const reasons = new Set();
     let best;
     for (const shift of eligible) {
-      for (const option of candidates(shift, byShift.get(shift.id), order, rules, map, nowMin, reasons)) {
+      for (const option of candidates(shift, byShift.get(shift.id), order, rules, map, nowMin, reasons, allowActive)) {
         if (!best || betterScore(option.score, best.score)) best = option;
       }
     }

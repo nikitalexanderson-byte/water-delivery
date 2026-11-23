@@ -199,7 +199,7 @@ internal fun OperationDialog(
             "return" -> "Зафиксировать возврат"
             "deliver" -> "Подтвердить доставку"
             "fail" -> "Сообщить диспетчеру"
-            else -> "Сдать смену"
+            else -> "Сдать тару и деньги"
         }
     FormPage(
         title,

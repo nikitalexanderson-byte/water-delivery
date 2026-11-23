@@ -20,12 +20,13 @@ internal class ApiError(val status: Int, message: String) : IOException(message)
 
 internal class DriverApi {
     suspend fun call(
-        path: String, token: String = "", body: JSONObject? = null, key: String? = null
+        path: String, token: String = "", body: JSONObject? = null, key: String? = null,
+        readTimeoutMs: Int = 12_000,
     ): JSONObject = withContext(Dispatchers.IO) {
         val connection = URL("${BuildConfig.API_URL}/api/$path").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 8000
-            connection.readTimeout = 12000
+            connection.readTimeout = readTimeoutMs
             connection.instanceFollowRedirects = false
             connection.setRequestProperty("Accept", "application/json")
             if (token.isNotEmpty()) connection.setRequestProperty("Authorization", "Bearer $token")

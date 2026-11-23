@@ -1,6 +1,8 @@
 package ru.farvater.driver
 
 import android.os.Bundle
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -8,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -21,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
@@ -31,7 +35,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
-import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -126,6 +129,17 @@ private fun SignIn(model: DriverModel) {
                     }
                 },
             )
+            if (model.invitationRequired) {
+                val context = LocalContext.current
+                var unavailable by remember { mutableStateOf(false) }
+                Feedback("Примите приглашение в веб-панели, затем войдите снова.")
+                OutlinedButton(onClick = {
+                    unavailable = runCatching {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.API_URL + "/")))
+                    }.isFailure
+                }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Открыть веб-панель") }
+                if (unavailable) Muted("Откройте в браузере ${BuildConfig.API_URL}/")
+            }
             if (model.message.isNotBlank()) Feedback(model.message, model.failed)
             Action(if (model.busy) "Вход…" else "Войти", ready, click = login)
         }
@@ -170,7 +184,8 @@ private fun DriverWorkspace(model: DriverModel) {
     }
     fun runNext(task: ShiftFocus) {
         when (task.kind) {
-            "confirm" -> model.write("shifts/${task.id}/confirm", JSONObject(), "Выход подтверждён")
+            "confirm", "crew" -> open("crew", task.id)
+            "new_sale" -> open("new_sale", task.id)
             "point" -> detail = task.id
             "preview" -> tab = Tab.Route
             "report" -> tab = Tab.Stock
@@ -302,8 +317,8 @@ private fun DriverWorkspace(model: DriverModel) {
                         stop != null -> PointView(stop, day, next, locked, ::open)
                         tab == Tab.Account -> AccountView(model) { open("password", 0) }
                         tab == Tab.Shift -> ShiftView(model, day, next, locked, ::runNext)
-                        tab == Tab.Route -> RouteView(day, next, model.mapBase) { detail = it }
-                        else -> InventoryView(day)
+                        tab == Tab.Route -> RouteView(day, next, model.mapBase, model.roads) { detail = it }
+                        else -> InventoryView(day, locked) { open("new_sale", it) }
                     }
                     Spacer(Modifier.height(2.dp))
                 }
@@ -312,22 +327,46 @@ private fun DriverWorkspace(model: DriverModel) {
     }
     val dismiss = { if (!model.busy) form = "" }
     val saved = {
+        if (form == "settle") tab = Tab.Stock
         form = ""
         detail = 0
     }
     val serverError = model.message.takeIf { model.failed }.orEmpty()
     when (form) {
         "" -> {}
+        "crew" -> day?.shift?.takeIf { it.id == objectId }?.let { shift ->
+            var loader by rememberSaveable(shift.id) { mutableStateOf(shift.loader) }
+            val confirm = shift.status == "pending"
+            FormPage(if (confirm) "Подтверждение выхода" else "Состав экипажа",
+                if (confirm) "Подтвердить выход" else "Сохранить состав", dismiss,
+                confirm = { model.write("shifts/${shift.id}/confirm", json("has_loader" to loader),
+                    if (confirm) "Выход подтверждён" else "Состав экипажа обновлён", saved) },
+                enabled = !locked && day.canEditCrew(), error = serverError) {
+                CardBlock {
+                    Heading(shift.vehicle)
+                    Muted("${clock(shift.start)}–${clock(shift.end)} · ${displayDay(model.date)}")
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp)
+                        .toggleable(value = loader, role = Role.Checkbox, onValueChange = { loader = it }),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = loader, onCheckedChange = null)
+                        Spacer(Modifier.width(12.dp))
+                        Text("С грузчиком")
+                    }
+                }
+            }
+        }
         "password" -> PasswordDialog(dismiss, !model.busy, serverError, model::changePassword)
-        "sale" -> {
-            val point = day?.stops?.find { it.id == objectId }
-            val trip = day?.trips?.find { it.id == point?.tripId }
-            if (point != null && trip != null)
-                SaleDialog(point, day.sales(trip), dismiss, !locked, serverError) { body ->
+        "sale", "new_sale" -> {
+            val existing = form == "sale"
+            val point = if (existing) day?.stops?.find { it.id == objectId } else null
+            val tripId = if (existing) point?.tripId else objectId
+            val trip = day?.trips?.find { it.id == tripId }
+            if (trip != null)
+                SaleDialog(point, day.sales(trip), model.shellPrice, dismiss, !locked, serverError) { body ->
                     model.write(
                         "trips/${trip.id}/sale",
                         body,
-                        "Дополнительная продажа учтена",
+                        "Заказ на месте учтён",
                         saved,
                     )
                 }

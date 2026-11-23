@@ -37,6 +37,7 @@ export function Reports({reports,date,send,download,refresh}) {
     {selected.stock_items?.length>0&&<div className="table-scroll"><table><caption className="stock-caption">Полные бутыли по брендам</caption><thead><tr>{['Бренд','Ожидалось','Сдано','Разница'].map(label=><th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{selected.stock_items.map(item=><tr key={item.product_id}><th scope="row">{item.name}</th><td className="measure">{item.expected} шт.</td><td className="measure">{item.actual} шт.</td><td className={item.difference?'mismatch':'measure'}>{item.difference} шт.</td></tr>)}</tbody></table></div>}
     <p className="sub">Вознаграждение <span className="measure">{money(selected.earnings)}</span> · Не оплачено <span className="measure">{money(selected.unpaid)}</span> · Грузчик {Number((selected.loader_minutes/60).toFixed(2)).toLocaleString('ru-RU')} ч</p>
     {selected.reviewed&&<span className="pill good">Проверено</span>}
+    {selected.export_status&&<p role="status">Google Таблицы · {{pending:'в очереди',sent:'отчёт передан',retry:'отправка будет повторена'}[selected.export_status]}</p>}
     {!selected.matched&&!selected.reviewed&&<button className="primary" disabled={busy} onClick={()=>review(selected.id)}>Подтвердить проверку расхождений</button>}
     </article></div></>:<section className="panel"><Empty title="Отчётов за день пока нет" detail="Сверка появится после сдачи тары и денег экспедитором."/></section>}</>;
 }

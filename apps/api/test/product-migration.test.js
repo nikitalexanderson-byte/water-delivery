@@ -75,7 +75,7 @@ test('Обновление до каталога сохраняет старую
   assert.deepEqual(await one(tx,'SELECT alt_phone,entrance,unit,intercom,access_instructions,paid_entry FROM orders WHERE id=1'),
     {alt_phone:'',entrance:'',unit:'',intercom:'',access_instructions:'',paid_entry:false});
   assert.deepEqual(await one(tx,'SELECT latitude,longitude FROM orders WHERE id=1'),{latitude:null,longitude:null});
-  const actor = { id:1 };
+  const actor = { id:1,team_id:1 };
   const special = await createProduct(tx,actor,{name:'Другая тестовая вода', water_price:37001});
   assert.equal(special.id,2);
   const details = { customer_id:1,date:'2026-01-11',window_start:500,window_end:620,category:'retail',
@@ -90,11 +90,11 @@ test('Обновление до каталога сохраняет старую
     {product_id:1,name:'Вода 19 л',water:3,water_price:21999},
     {product_id:2,name:'Другая тестовая вода',water:2,water_price:37001},
   ]);
-  await assert.rejects(orderLines(tx,{items:[items[0],items[0]]}), error => error.status === 400);
-  await assert.rejects(orderLines(tx,{items:[{product_id:500,water:1}]}), error => error.status === 400);
+  await assert.rejects(orderLines(tx,{items:[items[0],items[0]]},actor.team_id), error => error.status === 400);
+  await assert.rejects(orderLines(tx,{items:[{product_id:500,water:1}]},actor.team_id), error => error.status === 400);
   await editProduct(tx,actor,2,{name:'Новое название',water_price:49999,active:false});
-  assert.deepEqual((await catalog(tx,{activeOnly:true})).map(p => p.id),[1]);
-  await assert.rejects(orderLines(tx,{items:[items[1]]}), error => error.status === 409);
+  assert.deepEqual((await catalog(tx,{activeOnly:true,teamId:actor.team_id})).map(p => p.id),[1]);
+  await assert.rejects(orderLines(tx,{items:[items[1]]},actor.team_id), error => error.status === 409);
   const legacy = await createOrder(tx,actor,{...details,water:2,water_price:12503},{shellPrice:25000});
   assert.equal(Number(legacy.total),50006);
   assert.equal((await snapshots(legacy.id))[0].water_price,12503);

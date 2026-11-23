@@ -190,3 +190,6 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
 .address-map li button{display:block;width:100%;text-align:left;margin-bottom:3px}
 .app-shell .measure,dialog .measure,.order-overview .measure small{color:var(--measure);font-variant-numeric:tabular-nums}
 .basket-line input[type=number]{color:var(--measure);font-variant-numeric:tabular-nums}
+.early-orders { padding:16px; border-top:1px solid var(--line); }
+.early-orders>p { margin:4px 0 12px; color:var(--sub); font-size:.9rem; line-height:1.4; }
+.early-orders .queue-row { padding-inline:0; }

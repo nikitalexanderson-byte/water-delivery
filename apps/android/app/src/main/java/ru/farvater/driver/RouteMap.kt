@@ -3,7 +3,6 @@ package ru.farvater.driver
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.view.MotionEvent
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -98,13 +97,7 @@ private class RouteMapClient(private val ctx: Context, private val failure: (Str
         if (req.isForMainFrame && req.hasGesture() && req.url.scheme == "tel") {
             val requested = digits(req.url.schemeSpecificPart.orEmpty())
             val known = phones.firstOrNull { requested.isNotEmpty() && digits(it) == requested }
-            if (known != null)
-                runCatching {
-                        ctx.startActivity(
-                            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", known, null))
-                        )
-                    }
-                    .onFailure { failure("Откройте телефон и наберите $known.") }
+            if (known != null && !openDialApp(ctx, known)) failure("Откройте телефон и наберите $known.")
         }
         return true
     }
