@@ -43,7 +43,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test and assemble release APK
         working-directory: apps/android
-        run: bash gradlew testReleaseUnitTest assembleRelease
+        run: bash gradlew :app:testDebugUnitTest :app:assembleRelease
       - name: Align, sign and verify APK
         env:
           KEYSTORE_BASE64: ${{ secrets.STAGING_ANDROID_KEYSTORE }}
