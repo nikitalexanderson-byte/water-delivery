@@ -26,11 +26,16 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 internal fun callTime(date: String, eta: Int, zone: String): Long =
-    LocalDate.parse(date).atTime(eta / 60, eta % 60).atZone(ZoneId.of(zone))
+    LocalDate.parse(date).atStartOfDay().plusMinutes(eta.toLong()).atZone(ZoneId.of(zone))
         .minusMinutes(90).toInstant().toEpochMilli()
 
 private const val CHANNEL = "customer-calls"
 private const val WINDOW = 90L * 60L * 1000L
+
+internal fun pastRouteAlarmExpired(state: String, today: String, now: Long): Boolean {
+    val trigger = state.substringAfter('|').substringBefore('|').toLongOrNull()
+    return state.substringBefore('|') < today && (trigger == null || trigger <= now - WINDOW)
+}
 
 internal fun callSchedule(day: Day, date: String, zone: String, now: Long): Map<Int, Long> {
     if (day.shift?.published != true) return emptyMap()
@@ -76,9 +81,10 @@ internal class CallReminders(private val context: Context) {
         val today = LocalDate.now(ZoneId.of(zone)).toString()
         val scheduled = callSchedule(day, date, zone, now)
         prefs.all.forEach { (key, state) ->
-            val previous = state.toString().substringBefore('|')
+            val saved = state.toString()
             val id = key.toIntOrNull()
-            if (id != null && (previous < today || (previous == date && id !in scheduled))) remove(id)
+            if (id != null && (pastRouteAlarmExpired(saved, today, now) ||
+                    (saved.substringBefore('|') == date && id !in scheduled))) remove(id)
         }
         if (!canNotify()) return
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Звонки перед доставкой", NotificationManager.IMPORTANCE_DEFAULT))

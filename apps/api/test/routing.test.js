@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planOrders, retimeShift } from '../src/routing.js';
+import { planOrders, retimeShift, shiftSchedule } from '../src/routing.js';
 
 const settings = { legMinutes: 10, stopBase: 5, stopPerBottle: 0, reloadMinutes: 20 };
 const order = (id, fields = {}) => ({
@@ -146,6 +146,30 @@ const activeTrips = (fields = {}) => [
     stock_items: [{ product_id: 1, water_left: 11, reserved_water: 9 }, { product_id: 2, water_left: 10, reserved_water: 10 }],
     stops: [], ...fields },
 ];
+
+test('После удаления точек активного рейса номера завершённых посещений остаются зарезервированными', () => {
+  const stops = [
+    order(2, { position: 2, status: 'delivered' }), // Точка 1 отменена после посещения точки 2.
+    order(3, { position: 3, status: 'assigned' }),
+    order(5, { position: 5, status: 'failed' }), // Точка 4 перенесена на другую дату.
+    order(7, { position: 7, status: 'assigned' }),
+  ];
+  const options = { shift: shift(1), trips: activeTrips({ stops }), settings, nowMin: 650,
+    checkLimits: false, refreshActive: true };
+  const positions = trips => trips[0].stops.map(({ order_id, position }) => [order_id, position]);
+  assert.deepEqual(positions(shiftSchedule(options).timetable), [[3, 3], [7, 6]]);
+  const insertion = run({ allowActive: true, trips: options.trips, nowMin: 650,
+    orders: [order(8, { water: 1, items: [line(1, 1)] })] });
+  assert.deepEqual(insertion.unassigned, []);
+  const numbers = positions(insertion.trips).map(([, position]) => position);
+  assert.deepEqual(numbers, [3, 6, 7]);
+
+  // В ранее рассчитанном маршруте могла остаться коллизия на позиции 2.
+  const legacy = [order(10, { position: 1, status: 'assigned' }),
+    order(11, { position: 2, status: 'assigned' }), order(12, { position: 2, status: 'delivered' })];
+  const repaired = shiftSchedule({ ...options, trips: activeTrips({ stops: legacy }) });
+  assert.deepEqual(positions(repaired.timetable), [[10, 1], [11, 3]]);
+});
 
 test('На ходу резервируется каждая марка, включая предыдущие вставки той же партии', () => {
   const queue = [order(1, { water: 2, items: [line(1, 1), line(2, 1)] }),

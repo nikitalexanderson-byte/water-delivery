@@ -1,13 +1,29 @@
 package ru.farvater.driver
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InputTest {
     @Test fun remindersUseTheBaseZoneAndCrossMidnight() {
         assertEquals(java.time.Instant.parse("2026-11-23T20:00:00Z").toEpochMilli(),
             callTime("2026-11-24", 30, "Europe/Moscow"))
+    }
+
+    @Test fun delayedArrivalUsesTheFollowingCalendarDay() {
+        // 00:13 в новогоднюю ночь — звонок 31 декабря в 22:43 по Москве.
+        assertEquals(java.time.Instant.parse("2026-12-31T19:43:00Z").toEpochMilli(),
+            callTime("2026-12-31", 1453, "Europe/Moscow"))
+        // При прогнозе 03:00 сам звонок тоже приходится на следующий день.
+        val trigger = callTime("2026-12-31", 1620, "UTC")
+        assertEquals(java.time.Instant.parse("2027-01-01T01:30:00Z").toEpochMilli(), trigger)
+        val saved = "2026-12-31|$trigger|waiting"
+        assertFalse(pastRouteAlarmExpired(saved, "2027-01-01",
+            java.time.Instant.parse("2027-01-01T00:01:00Z").toEpochMilli()))
+        assertTrue(pastRouteAlarmExpired(saved, "2027-01-01",
+            java.time.Instant.parse("2027-01-01T03:00:00Z").toEpochMilli()))
     }
 
     @Test fun actualTimesRequireValidHoursAndMinutes() {

@@ -67,8 +67,14 @@ function schedule(shift, trips, rules, map, nowMin, checkLimits = true) {
     const validate = checkLimits && (!active || trip.extended);
     let bottles = 0;
     const stops = [];
-    for (const [index, order] of trip.stops.entries()) {
-      if (active && completed(order)) continue;
+    const fixedPositions = active ? new Set(trip.stops.filter(completed).map(order => order.position)) : null;
+    let position = 0;
+    for (const order of trip.stops) {
+      if (active && completed(order)) {
+        // При отмене предыдущей точки номер фактического посещения сохраняется.
+        position = Math.max(position, order.position);
+        continue;
+      }
       if (validate) {
         const issue = vehicleIssue(order, shift);
         if (issue) return { issue };
@@ -81,7 +87,9 @@ function schedule(shift, trips, rules, map, nowMin, checkLimits = true) {
       if (validate && time > order.window_end) {
         return { issue: 'Не хватает времени на доставку внутри окна клиента' };
       }
-      stops.push({ order_id: order.id, position: index + 1, eta });
+      position++;
+      while (fixedPositions?.has(position)) position++;
+      stops.push({ order_id: order.id, position, eta });
       previous = order;
     }
     if (!active && validate && bottles * BOTTLE_KG > shift.capacity_kg - shift.extra_kg) {
