@@ -8,6 +8,7 @@ import {Reports} from './Reports';
 import {Resources} from './Resources';
 import {PasswordDialog} from './PasswordDialog';
 import {Catalog,ProductDialog} from './Catalog';
+import {Registration} from './Registration';
 import './styles.css';
 
 const screens=[['orders','Заказы'],['routes','Маршруты'],['report','Отчёты'],['catalog','Каталог']];
@@ -103,6 +104,8 @@ function Workspace({session,exit,theme,toggle}) {
     <button className="icon-button" onClick={refresh} aria-label="Обновить данные" title="Обновить данные"><Icon name="refresh"/></button>
     {editable&&tab==='orders'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'new'})}><Icon name="plus"/>Новый заказ</button>}
     {canPlan&&tab==='routes'&&<button disabled={!day} onClick={()=>setDialog({kind:'resources'})}><Icon name="truck"/>Смены и машины</button>}
+    {tab==='routes'&&canPlan&&<button disabled={!day} onClick={()=>setDialog({kind:'vehicle'})}><Icon name="plus"/>Добавить машину</button>}
+    {tab==='routes'&&user.role==='manager'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'employee'})}><Icon name="plus"/>Добавить сотрудника</button>}
     {canReport&&tab==='catalog'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'product'})}><Icon name="plus"/>Новый бренд</button>}
   </div></header>
   {error&&<p className="error" role="alert">{error}{day?' Показаны последние полученные данные.':''}</p>}
@@ -117,6 +120,7 @@ function Workspace({session,exit,theme,toggle}) {
   {day&&dialog?.kind==='new'&&<NewOrder date={dialog.previous?config.today:date} previous={dialog.previous} customers={day.customers} products={day.products||[]} config={config} send={send} close={()=>setDialog(null)} saved={saved}/>}
   {day&&dialog?.kind==='product'&&<ProductDialog product={dialog.product} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
   {day&&dialog?.kind==='resources'&&<Resources date={date} get={get} send={send} close={()=>setDialog(null)} refresh={saved}/>}
+  {day&&['employee','vehicle'].includes(dialog?.kind)&&<Registration kind={dialog.kind} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
   {order&&dialog?.kind==='order'&&<OrderDetail key={order.id} order={order} trip={day.trips.find(t=>t.id===order.trip_id)} shift={day.shifts.find(s=>s.id===order.shift_id)} shifts={day.shifts} canPlan={canPlan} editable={editable} send={send} close={()=>setDialog(null)} saved={saved} repeat={previous=>setDialog({kind:'new',previous})}/>}
   </>;
 }
