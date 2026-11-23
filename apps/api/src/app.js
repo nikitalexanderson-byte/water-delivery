@@ -6,6 +6,8 @@ import {rows,one,writeLock} from './db.js';
 import {digest,passwordHash,passwordMatches,ensure} from './auth.js';
 import {calendar} from './config.js';
 import {dayView,audit} from './day.js';
+import {findCustomers,readCustomerHistory} from './customers.js';
+import {createPlaceSearch,PlaceSearchError} from './places.js';
 import {createOrder,allocate,changeOrder} from './orders.js';
 import {confirmShift,startTrip,deliver,returnTrip,settle} from './execution.js';
 import {reportCsv} from './csv.js';
@@ -22,8 +24,9 @@ const blank=z.object({});
 const denied='Недостаточно прав для этого действия';
 const userColumns='a.id,a.email,a.name,a.role';
 
-export function createApp({db,config,clock=()=>new Date()}){
+export function createApp({db,config,clock=()=>new Date(),placeFetch=fetch}){
   const app=express();
+  const searchPlaces=createPlaceSearch(config.geocoder,{fetchImpl:placeFetch});
   app.disable('x-powered-by');
   app.use(express.json({limit:'32kb'}));
   app.use((req,res,next)=>{
@@ -39,7 +42,8 @@ export function createApp({db,config,clock=()=>new Date()}){
   app.get('/api/config',(req,res)=>{
     const {today,tomorrow}=calendar(config,clock());
     res.json({today,tomorrow,timezone:config.timezone,base_address:config.address,base_lat:config.lat,
-      base_lon:config.lon,water_price:config.price,shell_price:config.shellPrice,map_provider:'demo'});
+      base_lon:config.lon,water_price:config.price,shell_price:config.shellPrice,map_provider:'demo',map_tiles_enabled:config.mapTilesEnabled??false,
+      geocoder_enabled:config.geocoder.enabled});
   });
 
   const attempts=new Map();
@@ -101,6 +105,30 @@ export function createApp({db,config,clock=()=>new Date()}){
     });
   }
   app.get('/api/me',(req,res)=>res.json(req.user));
+  app.get('/api/places',async(req,res)=>{
+    ensure(office.includes(req.user.role),denied,403);
+    const q=v.placeQuery.parse(req.query.q);
+    res.json({places:await searchPlaces(q)});
+  });
+  app.get('/api/customers',async(req,res)=>{
+    ensure(office.includes(req.user.role),denied,403);
+    const query=z.object({q:z.string().max(200).optional(),after:z.coerce.number().int().positive().max(2147483647).optional()}).parse(req.query);
+    res.json(await db.transaction(tx=>findCustomers(tx,query)));
+  });
+  app.get('/api/customers/:id/history',async(req,res)=>{
+    ensure(office.includes(req.user.role),denied,403);
+    const id=idOf(req);
+    const cursor=z.string().regex(/^\d{4}-\d{2}-\d{2}\.\d{1,10}$/).optional().parse(req.query.after);
+    let after;
+    if(cursor){
+      const [date,value]=cursor.split('.');
+      after={date:v.date.parse(date),id:v.id.max(2147483647).parse(Number(value))};
+    }
+    res.json(await db.transaction(async tx=>{
+      await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      return readCustomerHistory(tx,id,after);
+    }));
+  });
   action('/logout',null,blank,async(tx,user,input,req)=>{
     await tx.query('DELETE FROM sessions WHERE digest=$1',[req.session]);return {ok:true};
   });
@@ -117,13 +145,13 @@ export function createApp({db,config,clock=()=>new Date()}){
     const date=v.date.parse(req.query.date);
     res.json(await db.transaction(async tx=>{
       await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-      return dayView(tx,req.user,date,config,clock());
+      return dayView(tx,req.user,date,config,clock(),{includeCustomers:req.query.include_customers!=='false'});
     }));
   });
   app.get('/api/reports.csv',async(req,res)=>{
     ensure(oversight.includes(req.user.role),denied,403);
     const date=v.date.parse(req.query.date);
-    const {reports}=await db.transaction(tx=>dayView(tx,req.user,date,config,clock()));
+    const {reports}=await db.transaction(tx=>dayView(tx,req.user,date,config,clock(),{includeCustomers:false}));
     res.attachment('farvater-'+date+'.csv').type('text/csv; charset=utf-8').send(reportCsv(reports));
   });
   app.get('/api/resources',async(req,res)=>{
@@ -149,6 +177,7 @@ export function createApp({db,config,clock=()=>new Date()}){
     await audit(tx,user,'vehicle.changed',id,input);return {ok:true};
   },{method:'patch'});
   action('/orders',office,v.order,(tx,u,b)=>createOrder(tx,u,b,config));
+  action('/orders/:id',office,v.orderEdit,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,'edit',config,clock()),{method:'patch'});
   action('/products',oversight,v.product,createProduct);
   action('/products/:id',oversight,v.product.partial(),(tx,u,b,r)=>editProduct(tx,u,idOf(r),b),{method:'patch'});
   action('/accounts',['manager'],v.account,async(tx,u,b)=>{
@@ -182,6 +211,10 @@ export function createApp({db,config,clock=()=>new Date()}){
   app.use('/api',(req,res)=>res.status(404).json({error:'Метод API не найден'}));
   app.use(express.static(fileURLToPath(new URL('../../web/dist/',import.meta.url))));
   app.use((err,req,res,next)=>{
+    if(err instanceof PlaceSearchError){
+      if(err.retryAfter)res.set('Retry-After',String(err.retryAfter));
+      return res.status(err.status).json({error:err.message});
+    }
     if(err instanceof z.ZodError){
       const issue=err.issues[0],key=issue.path.join('.');
       return res.status(400).json({error:issue.code==='custom'?issue.message:'Проверьте значение поля '+(key||'запроса')});

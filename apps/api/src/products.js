@@ -23,21 +23,24 @@ export async function editProduct(tx, user, id, input) {
   return product;
 }
 
-export async function orderLines(tx, input) {
+export async function orderLines(tx, input, previousLines = []) {
   const requested = input.items ?? [{ product_id: input.product_id ?? 1, water: input.water, water_price: input.water_price }];
   ensure(requested.length > 0, 'Добавьте воду в заказ', 400);
   const ids = requested.map(item => item.product_id);
   ensure(new Set(ids).size === ids.length, 'Укажите каждый вид воды одной строкой', 400);
   const available = await rows(tx, 'SELECT id,name,water_price,active FROM products WHERE id=ANY($1::int[])', [ids]);
   const byId = new Map(available.map(p => [p.id,p]));
+  const prior = new Map(previousLines.map(item => [item.product_id,item]));
   const lines = requested.map(item => {
     const product = byId.get(item.product_id);
     ensure(product, 'Выбранный товар не найден', 400);
-    ensure(product.active, 'Товар снят с продажи: ' + product.name, 409);
+    const previous = prior.get(item.product_id);
+    const price = item.water_price ?? previous?.water_price ?? product.water_price;
+    const unchanged = previous && item.water === previous.water && price === previous.water_price;
+    ensure(product.active || unchanged, 'Товар снят с продажи: ' + product.name, 409);
     ensure(Number.isInteger(item.water) && item.water > 0, 'Количество бутылей должно быть положительным целым числом', 400);
-    const price = item.water_price ?? product.water_price;
     ensure(Number.isInteger(price) && price >= 0 && price <= 10000000, 'Проверьте цену воды', 400);
-    return { product_id: product.id, name: product.name, water: item.water, water_price: price };
+    return { product_id: product.id, name: previous?.name ?? product.name, water: item.water, water_price: price };
   });
   const water = lines.reduce((sum, item) => sum + item.water, 0);
   ensure(water <= 10000, 'Общее количество бутылей превышает 10 000', 400);

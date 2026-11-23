@@ -12,7 +12,7 @@ function grouped(entries,key){
   return groups;
 }
 
-export async function dayView(tx,user,date,config,now){
+export async function dayView(tx,user,date,config,now,{includeCustomers=true}={}){
   const {today,tomorrow,minute}=calendar(config,now);
   const published=date<=today || (date===tomorrow && minute>=1080);
   const own=user.role==='driver'?user.id:null;
@@ -30,7 +30,7 @@ export async function dayView(tx,user,date,config,now){
   const orders=visible?await rows(tx,`SELECT o.*,o.date::text AS date,t.shift_id FROM orders o
     LEFT JOIN trips t ON o.trip_id=t.id LEFT JOIN shifts s ON t.shift_id=s.id
     WHERE o.date=$1 AND ($2::int IS NULL OR s.driver_id=$2) ORDER BY o.window_start,o.id`,scope):[];
-  const customers=own?[]:await rows(tx,'SELECT * FROM customers ORDER BY name,id');
+  const customers=own||!includeCustomers?[]:await rows(tx,'SELECT * FROM customers ORDER BY name,id');
   const reports=user.role==='operator'?[]:await rows(tx,`SELECT r.*,a.name AS driver_name,v.name AS vehicle_name,s.date::text AS date,
     (SELECT count(*)::int FROM trips WHERE shift_id=s.id) AS trip_count,
     (SELECT count(DISTINCT CASE WHEN o.origin='on_site' THEN o.source_order_id ELSE o.id END)::int FROM orders o JOIN trips t ON t.id=o.trip_id WHERE t.shift_id=s.id AND o.status='delivered' AND o.category='retail') AS retail_count,

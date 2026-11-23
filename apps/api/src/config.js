@@ -3,6 +3,12 @@ import { z } from 'zod';
 const number = (key, fallback, min = 0, max = 100000) =>
   z.coerce.number().min(min).max(max).parse(process.env[key] || fallback);
 
+function enabled(key, fallback) {
+  const value = (process.env[key] || String(fallback)).trim().toLowerCase();
+  if (!['true','false'].includes(value)) throw Error(key+' принимает true или false');
+  return value==='true';
+}
+
 export function configuration() {
   const timezone = process.env.BUSINESS_TZ || 'Europe/Moscow';
   new Intl.DateTimeFormat('ru', {timeZone: timezone});
@@ -11,7 +17,16 @@ export function configuration() {
   const lat = coord('BASE_LAT', 90), lon = coord('BASE_LON', 180);
   if ((lat === null) !== (lon === null)) throw Error('Задайте обе координаты базы');
   if ((process.env.MAP_PROVIDER || 'demo') !== 'demo') throw Error('Доступен провайдер demo');
-  return { timezone, address, lat, lon, price: number('DEMO_WATER_PRICE_KOP',35000),
+  const geocoderUrl = new URL(process.env.GEOCODER_URL || 'https://photon.komoot.io/api/');
+  if (!['https:','http:'].includes(geocoderUrl.protocol) || geocoderUrl.search || geocoderUrl.hash ||
+      geocoderUrl.username || geocoderUrl.password || !/\/api\/?$/.test(geocoderUrl.pathname)) {
+    throw Error('GEOCODER_URL должен указывать на HTTP(S) endpoint Photon с путём /api/');
+  }
+  if (!geocoderUrl.pathname.endsWith('/')) geocoderUrl.pathname+='/';
+  return { timezone, address, lat, lon, mapTilesEnabled:enabled('MAP_TILES_ENABLED',true), price: number('DEMO_WATER_PRICE_KOP',35000),
+    geocoder: {enabled:enabled('GEOCODER_ENABLED',true),url:geocoderUrl.href,
+      minIntervalMs:z.coerce.number().int().min(100).max(60000).parse(process.env.GEOCODER_MIN_INTERVAL_MS||1000),
+      timeoutMs:z.coerce.number().int().min(100).max(30000).parse(process.env.GEOCODER_TIMEOUT_MS||5000)},
     shellPrice: 25000, sessionHours: number('SESSION_HOURS',12,1,720),
     host: process.env.API_HOST || '127.0.0.1', port: number('API_PORT',8080,1,65535),
     routing: {legMinutes:number('DEMO_LEG_MINUTES',15,1),stopBase:number('STOP_BASE_MINUTES',8),

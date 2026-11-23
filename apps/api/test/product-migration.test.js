@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { PGlite } from '@electric-sql/pglite';
@@ -68,6 +68,13 @@ test('Обновление до каталога сохраняет старую
   assert.deepEqual((await one(tx,'SELECT stock_items FROM settlements')).stock_items, [
     { product_id:1, name:'Вода 19 л', expected:2, actual:1, difference:-1 },
   ]);
+  // API ниже создаёт заказы в актуальной схеме поверх обновлённой истории.
+  for(const name of (await readdir(new URL('../migrations/',import.meta.url))).filter(n=>n.endsWith('.sql') && n>'003_products.sql').sort()){
+    await migrate(tx,name);
+  }
+  assert.deepEqual(await one(tx,'SELECT alt_phone,entrance,unit,intercom,access_instructions,paid_entry FROM orders WHERE id=1'),
+    {alt_phone:'',entrance:'',unit:'',intercom:'',access_instructions:'',paid_entry:false});
+  assert.deepEqual(await one(tx,'SELECT latitude,longitude FROM orders WHERE id=1'),{latitude:null,longitude:null});
   const actor = { id:1 };
   const special = await createProduct(tx,actor,{name:'Другая тестовая вода', water_price:37001});
   assert.equal(special.id,2);

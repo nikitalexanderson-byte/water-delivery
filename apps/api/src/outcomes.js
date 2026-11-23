@@ -31,9 +31,10 @@ export async function onSiteSale(tx,user,id,input,config){
   ensure(available && available.water_left-available.reserved_water>=input.water,'Нет свободного остатка: '+product.name);
   const sale=await one(tx,`INSERT INTO orders(customer_id,name,phone,address,address_verified,date,window_start,window_end,
     water,new_shells,water_price,shell_price,category,payment_method,company,floor,lift,checkpoint,height_limit_mm,
-    note,trip_id,position,eta,status,origin,source_order_id)
+    note,trip_id,position,eta,status,origin,source_order_id,alt_phone,entrance,unit,intercom,access_instructions,paid_entry,latitude,longitude)
     SELECT customer_id,name,phone,address,address_verified,date,window_start,window_end,
-    $2,$3,$4,$5,category,$6,$7,floor,lift,checkpoint,height_limit_mm,'Продажа на месте',trip_id,position,eta,'assigned','on_site',id
+    $2,$3,$4,$5,category,$6,$7,floor,lift,checkpoint,height_limit_mm,'Продажа на месте',trip_id,position,eta,'assigned','on_site',id,
+    alt_phone,entrance,unit,intercom,access_instructions,paid_entry,latitude,longitude
     FROM orders WHERE id=$1 RETURNING id,version`,[point.id,input.water,input.new_shells,input.water_price,config.shellPrice,
       input.payment_method,input.company]);
   await saveLines(tx,sale.id,basket.lines);
@@ -45,9 +46,11 @@ export async function onSiteSale(tx,user,id,input,config){
 export async function rescheduleFailed(tx,user,order,input){
   ensure(!order.rescheduled_to,'Повторный заказ уже создан');
   const copy=await one(tx,`INSERT INTO orders(customer_id,name,phone,address,address_verified,date,window_start,window_end,
-    water,new_shells,water_price,shell_price,category,payment_method,company,floor,lift,checkpoint,height_limit_mm,note,source_order_id,water_subtotal)
+    water,new_shells,water_price,shell_price,category,payment_method,company,floor,lift,checkpoint,height_limit_mm,note,source_order_id,water_subtotal,
+    alt_phone,entrance,unit,intercom,access_instructions,paid_entry,latitude,longitude)
     SELECT customer_id,name,phone,address,address_verified,$2,$3,$4,water,new_shells,water_price,shell_price,category,payment_method,
-    company,floor,lift,checkpoint,height_limit_mm,note,id,water_subtotal FROM orders WHERE id=$1 RETURNING id`,
+    company,floor,lift,checkpoint,height_limit_mm,note,id,water_subtotal,alt_phone,entrance,unit,intercom,access_instructions,paid_entry,latitude,longitude
+    FROM orders WHERE id=$1 RETURNING id`,
     [order.id,input.date,input.window_start,input.window_end]);
   await tx.query(`INSERT INTO order_items(order_id,product_id,name,water,water_price)
     SELECT $1,product_id,name,water,water_price FROM order_items WHERE order_id=$2`,[copy.id,order.id]);
