@@ -6,6 +6,8 @@ COPY apps/web/package.json apps/web/
 RUN npm ci
 COPY apps ./apps
 COPY packages ./packages
-RUN npm run build && npm prune --omit=dev
+# The deployment checkout can be readable only by its owner.
+RUN npm run build && npm prune --omit=dev \
+    && chmod -R a+rX apps packages && chmod a+r package.json
 USER node
 CMD ["node", "apps/api/src/server.js"]

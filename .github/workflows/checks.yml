@@ -83,6 +83,10 @@ jobs:
         run: |
           install -d downloads
           printf 'farvater-download-fixture\n' > downloads/farvater-driver.apk
+      - name: Match the deployment checkout permissions
+        run: |
+          chmod -R go-rwx apps packages
+          chmod go-rwx package*.json deploy/Caddyfile
       - run: docker compose --env-file .env.vps -f deploy/compose.vps.yml config --quiet
       - run: docker compose --env-file .env.vps -f deploy/compose.vps.yml up --build --wait --wait-timeout 150
       - name: Verify the proxy and restore a fresh backup in a separate database
