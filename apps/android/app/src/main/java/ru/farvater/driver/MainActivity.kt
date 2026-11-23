@@ -171,6 +171,7 @@ private fun ShiftScreen(model: DriverModel) {
             day.trips.forEach { trip ->
                 val stops = day.stops.filter { it.tripId == trip.id }
                 val next = stops.firstOrNull { it.status == "assigned" }
+                val options = day.sales(trip)
                 item(key = "trip-${trip.id}") {
                     Panel {
                         SectionTitle("Рейс ${trip.number}")
@@ -179,6 +180,10 @@ private fun ShiftScreen(model: DriverModel) {
                             "returned" -> "Вернулись на базу"
                             else -> "К погрузке · ${trip.plannedWater} бут. · ${stops.count { !it.onSite }} точ."
                         })
+                        trip.stock.filter { it.planned > 0 || it.left > 0 }.forEach { item ->
+                            Text("${item.name} · план ${item.planned} бут." +
+                                if (trip.status == "planned") "" else " · остаток ${item.left} бут.")
+                        }
                         if (model.base.isNotBlank()) Text("База · ${model.base}")
                         trip.startedAt?.let { Text("Фактический выезд · ${clock(it)}") }
                         val currentDay = model.date == model.today
@@ -195,14 +200,14 @@ private fun ShiftScreen(model: DriverModel) {
                         Panel {
                             Text("Допродажа · ${stop.name}", style = MaterialTheme.typography.titleMedium)
                             Text("${stop.water} бут. воды · ${stop.shells} новой тары · ${money(stop.total)}")
+                            stop.items.forEach { Text("${it.name} · ${it.water} бут.") }
                             Text(if (stop.paid) "Оплата подтверждена" else "Пока не оплачено")
                         }
                         return@items
                     }
                     val atPoint = trip.status == "active" && (next?.id == stop.id || stop.status == "delivered")
-                    val reserve = stops.filter { it.status == "assigned" }.sumOf { it.water }
                     StopCard(stop, actionable = next?.id == stop.id && trip.status == "active" && !locked,
-                        canSell = atPoint && trip.waterLeft > reserve && !locked,
+                        canSell = atPoint && options.isNotEmpty() && !locked,
                         onAction = { kind -> open(kind, stop.id) })
                 }
             }
@@ -232,8 +237,7 @@ private fun ShiftScreen(model: DriverModel) {
             val stop = day?.stops?.firstOrNull { it.id == objectId }
             val trip = day?.trips?.firstOrNull { it.id == stop?.tripId }
             if (stop != null && trip != null) {
-                val reserve = day.stops.filter { it.tripId == trip.id && it.status == "assigned" }.sumOf { it.water }
-                SaleDialog(stop, trip.waterLeft - reserve, { form = null }) { body ->
+                SaleDialog(stop, day.sales(trip), { form = null }) { body ->
                     form = null
                     model.write("trips/${trip.id}/sale", body, "Дополнительная продажа учтена")
                 }
@@ -260,6 +264,7 @@ private fun StopCard(stop: Stop, actionable: Boolean, canSell: Boolean, onAction
             "Проезд через КПП".takeIf { stop.checkpoint }, stop.note.takeIf { it.isNotBlank() })
         if (access.isNotEmpty()) Text(access.joinToString(" · "))
         Text("${stop.water} бут. воды · ${stop.shells} новой тары")
+        stop.items.forEach { Text("${it.name} · ${it.water} × ${money(it.price)}") }
         Text("${money(stop.total)} · ${if (stop.bank) "безналичные" else "наличные"}")
         if (stop.status == "delivered") Text(if (stop.paid) "Доставлено · оплачено" else "Доставлено · без оплаты",
             color = MaterialTheme.colorScheme.secondary)
@@ -280,6 +285,11 @@ private fun StopCard(stop: Stop, actionable: Boolean, canSell: Boolean, onAction
 private fun ReportCard(report: Report) {
     Panel {
         SectionTitle(if (report.matched) "Отчёт совпал" else "Отчёт не совпал")
+        report.stock.forEach { item ->
+            val delta = if (item.difference == 0) "" else " · разница ${signed(item.difference.toLong())}"
+            Text("${item.name} · по учёту ${item.expected} · сдано ${item.actual}$delta",
+                color = if (item.difference == 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+        }
         listOf(
             "Полные бутыли" to (report.expected.water.toString() to report.actual.water.toString()),
             "Пустая тара" to (report.expected.empty.toString() to report.actual.empty.toString()),

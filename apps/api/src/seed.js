@@ -1,11 +1,17 @@
 import {one,writeLock} from './db.js';
 import {calendar} from './config.js';
 import {passwordHash,ensure} from './auth.js';
+import {saveLines} from './products.js';
 
 export async function seed(db,config,password){
   ensure(password && password.length>=10,'Для демоданных задайте DEMO_PASSWORD длиной от 10 символов',400);
   await db.transaction(async tx=>{
     await writeLock(tx);
+    if(!await one(tx,"SELECT 1 FROM seed_history WHERE name='demo-products-v1'")){
+      await tx.query('UPDATE products SET water_price=$1 WHERE id=1 AND water_price=0',[config.price]);
+      await tx.query("INSERT INTO products(name,water_price) VALUES('Учебный родник · 19 л',$1) ON CONFLICT DO NOTHING",[config.price+5000]);
+      await tx.query("INSERT INTO seed_history VALUES('demo-products-v1')");
+    }
     if(await one(tx,"SELECT 1 FROM seed_history WHERE name='demo-v1'")) return;
     const drivers=[];
     for(const [login,role,name] of [
@@ -29,11 +35,12 @@ export async function seed(db,config,password){
       [3,'Склад «Берег»','Демонстрационный проезд, 8',6,720,1020]]){
       const phone='+7000000000'+i;
       const customer=await one(tx,'INSERT INTO customers(name,phone,address) VALUES($1,$2,$3) RETURNING id',[name,phone,address]);
-      await tx.query(`INSERT INTO orders(customer_id,name,phone,address,date,water,new_shells,water_price,shell_price,
+      const sample=await one(tx,`INSERT INTO orders(customer_id,name,phone,address,date,water,new_shells,water_price,shell_price,
         category,payment_method,company,window_start,window_end,address_verified,height_limit_mm)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,$15)`,
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,$15) RETURNING id`,
         [customer.id,name,phone,address,today,quantity,i===2?1:0,config.price,config.shellPrice,
          i===1?'wholesale':'retail',i===1?'bank':'cash',i===1?name:'',begin,end,i===3?2800:null]);
+      await saveLines(tx,sample.id,[{product_id:1,name:'Вода 19 л',water:quantity,water_price:config.price}]);
     }
     await tx.query("INSERT INTO seed_history VALUES('demo-v1')");
   });

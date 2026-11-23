@@ -5,12 +5,16 @@ export const minute=z.number().int().min(0).max(1439);
 const count=z.number().int().min(0).max(10000);
 const money=z.number().int().min(0).max(2000000000);
 const text=z.string().trim().min(1).max(300);
+const price=money.max(10000000);
+const counted=z.object({product_id:id,water:count});
+const basket=z.array(counted.extend({water:count.min(1),water_price:price.optional()})).min(1).max(500);
 export const windowFields={window_start:minute,window_end:minute};
 export const goodWindow=x=>x.window_end>x.window_start;
 export const version=z.object({version:id});
 export const move=version.extend({date,...windowFields}).refine(goodWindow,'Проверьте окно доставки');
 export const order=z.object({customer_id:id.optional(), name:text.optional(),phone:z.string().trim().regex(/^\+?[\d ()-]{6,24}$/).optional(),
-  address:text.optional(),date,water:count.min(1),new_shells:count.default(0),water_price:money.max(10000000),
+  address:text.optional(),date,water:count.min(1).optional(),new_shells:count.default(0),water_price:price.optional(),
+  items:basket.optional(),product_id:id.optional(),
   category:z.enum(['retail','wholesale']),payment_method:z.enum(['cash','bank']),company:z.string().trim().max(200).default(''),
   ...windowFields,floor:z.number().int().min(-5).max(150).default(1),lift:z.boolean().default(true),
   checkpoint:z.boolean().default(false),height_limit_mm:id.max(15000).nullish(),note:z.string().trim().max(1000).default(''),
@@ -18,7 +22,7 @@ export const order=z.object({customer_id:id.optional(), name:text.optional(),pho
   .refine(goodWindow,'Окончание окна должно быть позже начала')
   .refine(x=>x.customer_id || (x.name && x.phone && x.address),'Укажите имя, телефон и адрес клиента')
   .refine(x=>x.payment_method!=='bank'||x.company,'Для безнала укажите компанию')
-  .refine(x=>x.new_shells<=x.water,'Количество новой тары превышает количество бутылей');
+  .refine(x=>x.items || (x.water!=null && x.water_price!=null),'Укажите состав заказа и цену');
 export const plan=z.object({date,order_id:id.optional(),shift_id:id.optional(),version:id.optional()})
   .refine(x=>Boolean(x.order_id)===Boolean(x.shift_id),'Для ручного назначения выберите заказ и смену');
 export const shift=z.object({date,driver_id:id,vehicle_id:id,start_min:minute,end_min:minute,has_loader:z.boolean().default(false)})
@@ -28,13 +32,14 @@ export const newVehicle=vehicle.extend({name:text,capacity_kg:id.max(100000),len
   .refine(x=>x.extra_kg<=x.capacity_kg,'Масса оборудования превышает грузоподъёмность');
 export const account=z.object({email:z.email().max(254).transform(s=>s.toLowerCase()),name:text,password:z.string().min(10).max(128),
   role:z.enum(['manager','operator','dispatcher','driver'])});
-export const start=z.object({actual_start:minute,water:count.min(1)});
+export const product=z.object({name:text,water_price:price,active:z.boolean().optional()});
+export const start=z.object({actual_start:minute,water:count.min(1),items:z.array(counted).optional()});
 export const complete=z.object({version:id,empty:count,paid:z.boolean()});
 export const failure=version.extend({reason:z.string().trim().min(1).max(500)});
-export const sale=z.object({customer_order_id:id,water:count.min(1),new_shells:count,water_price:money.max(10000000),
+export const sale=z.object({customer_order_id:id,product_id:id.optional(),water:count.min(1),new_shells:count,water_price:price,
   payment_method:z.enum(['cash','bank']),company:z.string().trim().max(200).default(''),paid:z.boolean(),empty:count})
   .refine(x=>x.new_shells<=x.water,'Новой тары больше, чем воды')
   .refine(x=>x.payment_method!=='bank'||x.company,'Для безнала укажите компанию');
 export const returned=z.object({actual_return:minute});
-export const settlement=z.object({water:count,empty:count,cash:money,bank:money,loader_minutes:minute});
+export const settlement=z.object({water:count,empty:count,cash:money,bank:money,loader_minutes:minute,items:z.array(counted).optional()});
 export const login=z.object({email:z.email().max(254).transform(v=>v.toLowerCase()),password:z.string().min(1).max(256)});

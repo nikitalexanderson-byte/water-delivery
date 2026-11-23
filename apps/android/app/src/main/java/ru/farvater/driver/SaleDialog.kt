@@ -13,11 +13,16 @@ import org.json.JSONObject
 import java.math.BigDecimal
 
 @Composable
-internal fun SaleDialog(stop: Stop, available: Int, close: () -> Unit, submit: (JSONObject) -> Unit) {
+internal fun SaleDialog(stop: Stop, options: List<SaleOption>, close: () -> Unit, submit: (JSONObject) -> Unit) {
+    var selected by rememberSaveable { mutableIntStateOf(options.firstOrNull()?.product?.id ?: 0) }
+    val option = options.firstOrNull { it.product.id == selected }
+    val available = option?.free ?: 0
     var quantity by rememberSaveable { mutableStateOf("") }
     var shells by rememberSaveable { mutableStateOf("0") }
     var empty by rememberSaveable { mutableStateOf("0") }
-    var price by rememberSaveable { mutableStateOf(BigDecimal.valueOf(stop.waterPrice, 2).toPlainString().replace('.', ',')) }
+    var price by rememberSaveable(selected) {
+        mutableStateOf(option?.let { BigDecimal.valueOf(it.product.price, 2).toPlainString().replace('.', ',') }.orEmpty())
+    }
     var bank by rememberSaveable { mutableStateOf(stop.bank) }
     var company by rememberSaveable { mutableStateOf(stop.company) }
     var paid by rememberSaveable { mutableStateOf<Boolean?>(null) }
@@ -32,7 +37,11 @@ internal fun SaleDialog(stop: Stop, available: Int, close: () -> Unit, submit: (
     AlertDialog(onDismissRequest = close, title = { Text("Дополнительная продажа") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${stop.name} · ${stop.address}")
-            Text("Свободно на борту · $available бут.")
+            Text("Бренд воды и свободный запас")
+            options.forEach {
+                FilterChip(selected = it.product.id == selected, onClick = { selected = it.product.id },
+                    label = { Text("${it.product.name} · ${it.free} бут.") })
+            }
             Input("Выдано воды, бут.", quantity, { quantity = it })
             Input("Цена воды за бутыль, ₽", price, { price = it }, KeyboardType.Decimal)
             Input("Продано новой тары, шт.", shells, { shells = it })
@@ -51,14 +60,15 @@ internal fun SaleDialog(stop: Stop, available: Int, close: () -> Unit, submit: (
     }, confirmButton = {
         Button(onClick = {
             error = when {
-                units == null || units !in 1..available -> "Укажите количество в пределах свободного остатка"
+                option == null -> "Выберите доступный бренд воды"
+                units == null || units !in 1..available -> "Укажите количество в пределах свободного остатка выбранного бренда"
                 newShells == null || newShells > units -> "Количество новой тары не может превышать количество воды"
                 unitPrice == null || unitPrice <= 0 || total == null -> "Проверьте цену воды"
                 collected == null -> "Укажите количество пустой тары"
                 bank && company.isBlank() -> "Укажите название компании для безнала"
                 paid == null -> "Отметьте, подтверждена ли оплата"
                 else -> {
-                    submit(json("customer_order_id" to stop.id, "water" to units, "new_shells" to newShells,
+                    submit(json("customer_order_id" to stop.id, "product_id" to option.product.id, "water" to units, "new_shells" to newShells,
                         "water_price" to unitPrice, "payment_method" to if (bank) "bank" else "cash",
                         "company" to if (bank) company.trim() else "", "paid" to (paid == true), "empty" to collected))
                     ""

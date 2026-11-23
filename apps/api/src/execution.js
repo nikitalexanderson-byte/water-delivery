@@ -1,7 +1,8 @@
-import {one} from './db.js';
+import {one,rows} from './db.js';
 import {ensure} from './auth.js';
 import {audit,stock} from './day.js';
 import {calendar} from './config.js';
+import {tripStock,countedItems,recordItems,reconcileStock} from './stock-items.js';
 
 async function ownShift(tx,user,id){
   const shift=await one(tx,`SELECT s.*,s.date::text AS date,v.capacity_kg,v.extra_kg FROM shifts s
@@ -34,9 +35,13 @@ export async function startTrip(tx,user,id,input,config,now){
   const plan=await one(tx,'SELECT COALESCE(sum(water),0)::int AS water FROM orders WHERE trip_id=$1',[id]);
   ensure(plan.water>0 && input.water>=plan.water,'Недостаточно воды для точек рейса');
   ensure(input.water*20+shift.extra_kg<=shift.capacity_kg,'Загрузка превышает грузоподъёмность автомобиля');
+  const required=await tripStock(tx,[id]);
+  const {counts}=await countedItems(tx,input,required,false);
+  for(const item of required) ensure((counts.get(item.product_id)??0)>=item.reserved_water,'Недостаточно воды для рейса: '+item.name);
   await tx.query("UPDATE shifts SET status='active' WHERE id=$1",[shift.id]);
   await tx.query("UPDATE trips SET status='active',actual_start=$1 WHERE id=$2",[input.actual_start,id]);
-  await tx.query("INSERT INTO inventory(trip_id,kind,full_delta,empty_delta) VALUES($1,'load',$2,0)",[id,input.water]);
+  const load=await one(tx,"INSERT INTO inventory(trip_id,kind,full_delta,empty_delta) VALUES($1,'load',$2,0) RETURNING id",[id,input.water]);
+  await recordItems(tx,load.id,counts,1);
   await audit(tx,user,'trip.started',id,input);
   return {ok:true};
 }
@@ -48,14 +53,19 @@ export async function deliver(tx,user,id,input){
   ensure(order.status==='assigned' && order.trip_status==='active','Подтвердить доставку можно только в активном рейсе');
   const balance=await stock(tx,order.trip_id);
   ensure(balance.water>=order.water,'Недостаточно воды на борту');
+  const goods=await rows(tx,'SELECT product_id,name,water FROM order_items WHERE order_id=$1',[id]);
+  const onboard=new Map((await tripStock(tx,[order.trip_id])).map(p=>[p.product_id,p.water_left]));
+  ensure(goods.length>0,'В заказе отсутствует состав воды');
+  for(const item of goods) ensure((onboard.get(item.product_id)??0)>=item.water,'Недостаточно воды на борту: '+item.name);
   const rate=await one(tx,'SELECT * FROM rates WHERE category=$1 AND has_loader=$2',[order.category,order.has_loader]);
   ensure(rate,'Не настроена ставка экспедитора');
   const visit=order.origin==='on_site'?order.source_order_id:order.id;
   const previous=await one(tx,`SELECT 1 FROM receipts r JOIN orders o ON o.id=r.order_id
     WHERE o.id=$1 OR (o.origin='on_site' AND o.source_order_id=$1) LIMIT 1`,[visit]);
   const stopFee=previous?0:rate.per_stop;
-  await tx.query(`INSERT INTO inventory(trip_id,order_id,kind,full_delta,empty_delta,sold_shells)
-    VALUES($1,$2,'delivery',$3,$4,$5)`,[order.trip_id,id,-order.water,input.empty,order.new_shells]);
+  const movement=await one(tx,`INSERT INTO inventory(trip_id,order_id,kind,full_delta,empty_delta,sold_shells)
+    VALUES($1,$2,'delivery',$3,$4,$5) RETURNING id`,[order.trip_id,id,-order.water,input.empty,order.new_shells]);
+  await recordItems(tx,movement.id,goods.map(p=>[p.product_id,p.water]),-1);
   await tx.query(`INSERT INTO receipts(order_id,amount,method,confirmed,earnings,per_stop,per_bottle)
     VALUES($1,$2,$3,$4,$5,$6,$7)`,[id,order.total,order.payment_method,input.paid,
     stopFee+rate.per_bottle*order.water,stopFee,rate.per_bottle]);
@@ -86,13 +96,15 @@ export async function settle(tx,user,id,input){
     COALESCE(sum(amount) FILTER(WHERE NOT confirmed),0) AS unpaid FROM receipts r JOIN orders o ON r.order_id=o.id
     JOIN trips t ON o.trip_id=t.id WHERE t.shift_id=$1`,[id]);
   const expected={water:goods.water,empty:goods.empty,cash:Number(sales.cash),bank:Number(sales.bank)};
-  const {loader_minutes,...actual}=input;
+  const stockItems=await reconcileStock(tx,id,input);
+  const {loader_minutes,water,empty,cash,bank}=input;
+  const actual={water,empty,cash,bank};
   const difference=Object.fromEntries(Object.keys(expected).map(key=>[key,actual[key]-expected[key]]));
-  const matched=Object.values(difference).every(n=>n===0);
+  const matched=Object.values(difference).every(n=>n===0) && stockItems.every(p=>p.difference===0);
   const report=await one(tx,`INSERT INTO settlements(shift_id,expected,actual,difference,matched,delivered_water,delivered_stops,
-    sold_shells,earnings,unpaid,loader_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    sold_shells,earnings,unpaid,loader_minutes,stock_items) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
     [id,JSON.stringify(expected),JSON.stringify(actual),JSON.stringify(difference),matched,goods.delivered_water,
-    sales.delivered_stops,goods.sold_shells,sales.earnings,sales.unpaid,loader_minutes]);
+    sales.delivered_stops,goods.sold_shells,sales.earnings,sales.unpaid,loader_minutes,JSON.stringify(stockItems)]);
   await tx.query("UPDATE shifts SET status='closed' WHERE id=$1",[id]);
   await audit(tx,user,'shift.settled',id,{matched,difference});
   return {...report,driver_name:user.name};

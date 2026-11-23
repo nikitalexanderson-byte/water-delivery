@@ -9,6 +9,7 @@ import {dayView,audit} from './day.js';
 import {createOrder,allocate,changeOrder} from './orders.js';
 import {confirmShift,startTrip,deliver,returnTrip,settle} from './execution.js';
 import {reportCsv} from './csv.js';
+import {catalog,createProduct,editProduct} from './products.js';
 import {failDelivery,onSiteSale} from './outcomes.js';
 import * as v from './validation.js';
 
@@ -128,7 +129,7 @@ export function createApp({db,config,clock=()=>new Date()}){
   app.get('/api/resources',async(req,res)=>{
     ensure(oversight.includes(req.user.role),denied,403);
     res.json(await db.transaction(async tx=>({drivers:await rows(tx,"SELECT id,name FROM accounts WHERE role='driver' ORDER BY name"),
-      vehicles:await rows(tx,'SELECT * FROM vehicles ORDER BY id')})));
+      vehicles:await rows(tx,'SELECT * FROM vehicles ORDER BY id'),products:await catalog(tx)})));
   });
   action('/shifts',['dispatcher'],v.shift,async(tx,user,input)=>{
     ensure(await one(tx,"SELECT 1 FROM accounts WHERE id=$1 AND role='driver'",[input.driver_id]),'Экспедитор не найден',404);
@@ -148,6 +149,8 @@ export function createApp({db,config,clock=()=>new Date()}){
     await audit(tx,user,'vehicle.changed',id,input);return {ok:true};
   },{method:'patch'});
   action('/orders',office,v.order,(tx,u,b)=>createOrder(tx,u,b,config));
+  action('/products',oversight,v.product,createProduct);
+  action('/products/:id',oversight,v.product.partial(),(tx,u,b,r)=>editProduct(tx,u,idOf(r),b),{method:'patch'});
   action('/accounts',['manager'],v.account,async(tx,u,b)=>{
     const result=await one(tx,'INSERT INTO accounts(email,name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id',
       [b.email,b.name,b.role,await passwordHash(b.password)]);

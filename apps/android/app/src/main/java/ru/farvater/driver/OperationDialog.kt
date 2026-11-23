@@ -11,6 +11,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
+import org.json.JSONArray
+
+internal data class BrandCount(val id: Int, val name: String, val expected: Int)
+
+internal fun brandCounts(products: List<Product>, rows: List<StockItem>, loading: Boolean): List<BrandCount> {
+    val names = (rows.map { it.productId to it.name } + products.map { it.id to it.name }).toMap()
+    val expected = rows.groupBy { it.productId }.mapValues { (_, items) ->
+        items.sumOf { if (loading) it.planned else it.left }
+    }
+    return names.map { (id, name) -> BrandCount(id, name, expected[id] ?: 0) }
+        .sortedWith(compareByDescending<BrandCount> { it.expected > 0 }.thenBy { it.id })
+}
+
+internal fun enteredStock(brands: List<BrandCount>, values: List<String>, loading: Boolean): Map<Int, Int>? {
+    if (brands.isEmpty() || values.size != brands.size) return null
+    return buildMap {
+        brands.forEachIndexed { index, brand ->
+            val actual = readCount(values[index]) ?: return null
+            if (actual > 10_000 || (loading && actual < brand.expected)) return null
+            if (actual > 0) put(brand.id, actual)
+        }
+    }
+}
 
 @Composable
 internal fun Input(label: String, value: String, change: (String) -> Unit,
@@ -29,7 +52,11 @@ internal fun OperationDialog(
     val stop = day?.stops?.find { it.id == id }
     val shift = day?.shift ?: return
     var time by rememberSaveable { mutableStateOf("") }
-    var water by rememberSaveable { mutableStateOf(if (kind == "start") trip?.plannedWater?.toString().orEmpty() else "") }
+    val loading = kind == "start"
+    val brands = brandCounts(day.products, if (loading) trip?.stock.orEmpty() else day.trips.flatMap { it.stock }, loading)
+    var counts by rememberSaveable(kind, id, brands.map { it.id }) {
+        mutableStateOf(ArrayList(brands.map { if (loading) it.expected.toString() else "" }))
+    }
     var empty by rememberSaveable { mutableStateOf("") }
     var cash by rememberSaveable { mutableStateOf("") }
     var bank by rememberSaveable { mutableStateOf("") }
@@ -49,7 +76,9 @@ internal fun OperationDialog(
             when (kind) {
                 "start" -> {
                     Text("Рейс ${trip?.number} · требуется ${trip?.plannedWater} полных бутылей")
-                    Input("Фактически загружено, бут.", water, { water = it })
+                    BrandInputs(brands, counts, true) { index, value ->
+                        counts = ArrayList(counts).apply { set(index, value) }
+                    }
                     Input("Фактический выезд, чч:мм", time, { time = it }, KeyboardType.Ascii, "09:30")
                 }
                 "return" -> Input("Вернулись на базу, чч:мм", time, { time = it }, KeyboardType.Ascii, "17:10")
@@ -62,6 +91,7 @@ internal fun OperationDialog(
                 "deliver" -> {
                     Text(stop?.address.orEmpty(), style = MaterialTheme.typography.titleMedium)
                     Text("Выдано ${stop?.water} бут. воды и ${stop?.shells} новой тары")
+                    stop?.items?.forEach { Text("${it.name} · ${it.water} бут.") }
                     Input("Принято пустой тары, шт.", empty, { empty = it })
                     Text("Оплата ${money(stop?.total ?: 0)} ${if (stop?.bank == true) "по безналу" else "наличными"}")
                     listOf(true to "Оплата подтверждена", false to "Пока не оплачено").forEach { (value, label) ->
@@ -70,7 +100,9 @@ internal fun OperationDialog(
                 }
                 "settle" -> {
                     Text("Введите пересчитанные остатки и фактически сданные суммы. При отсутствии укажите 0.")
-                    Input("Возвращено полных, бут.", water, { water = it })
+                    BrandInputs(brands, counts, false) { index, value ->
+                        counts = ArrayList(counts).apply { set(index, value) }
+                    }
                     Input("Сдано пустой тары, шт.", empty, { empty = it })
                     Input("Сдано наличными, ₽", cash, { cash = it }, KeyboardType.Decimal)
                     Input("Подтверждено по безналу, ₽", bank, { bank = it }, KeyboardType.Decimal)
@@ -82,15 +114,18 @@ internal fun OperationDialog(
     }, confirmButton = {
         Button(onClick = {
             error = ""
-            val full = readCount(water)
+            val quantities = enteredStock(brands, counts, loading)
+            val full = quantities?.values?.sum()
+            val items = JSONArray()
+            quantities?.forEach { (productId, water) -> items.put(json("product_id" to productId, "water" to water)) }
             val empties = readCount(empty)
             val minutes = readTime(time)
             when (kind) {
                 "start" -> when {
                     trip == null -> error = "Обновите маршрут"
-                    full == null || full < trip.plannedWater -> error = "Проверьте количество по плану рейса"
+                    full == null || full < trip.plannedWater -> error = "Проверьте количество каждого бренда по плану рейса"
                     minutes == null -> error = "Введите время выезда в формате чч:мм"
-                    else -> submit("trips/$id/start", json("actual_start" to minutes, "water" to full), "Выезд сохранён")
+                    else -> submit("trips/$id/start", json("actual_start" to minutes, "water" to full, "items" to items), "Выезд сохранён")
                 }
                 "return" -> when {
                     minutes == null -> error = "Введите время возврата в формате чч:мм"
@@ -115,14 +150,26 @@ internal fun OperationDialog(
                     val bankKop = readRubles(bank)
                     val loaderMin = readCount(loader)
                     when {
-                        full == null || empties == null -> error = "Укажите целое количество полных и пустых бутылей"
+                        full == null || empties == null -> error = "Укажите фактический остаток для каждого бренда и пустой тары"
                         cashKop == null || bankKop == null -> error = "Введите суммы в рублях с точностью до копеек"
                         loaderMin == null -> error = "Укажите длительность работы грузчика в минутах"
-                        else -> submit("shifts/$id/settle", json("water" to full, "empty" to empties,
+                        else -> submit("shifts/$id/settle", json("water" to full, "items" to items, "empty" to empties,
                             "cash" to cashKop, "bank" to bankKop, "loader_minutes" to loaderMin), "Смена сдана")
                     }
                 }
             }
         }) { Text("Подтвердить") }
     }, dismissButton = { TextButton(onClick = onDismiss) { Text("Назад") } })
+}
+
+@Composable
+private fun BrandInputs(brands: List<BrandCount>, values: List<String>, loading: Boolean, change: (Int, String) -> Unit) {
+    if (brands.isEmpty()) Text("Обновите смену, чтобы получить список товаров.")
+    brands.forEachIndexed { index, brand ->
+        OutlinedTextField(value = values[index], onValueChange = { change(index, it) },
+            label = { Text("${brand.name} · бут.") }, modifier = Modifier.fillMaxWidth(),
+            supportingText = {
+                Text(if (loading) "План к загрузке · ${brand.expected}" else "По учёту к возврату · ${brand.expected}")
+            }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+    }
 }

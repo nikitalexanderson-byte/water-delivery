@@ -405,3 +405,45 @@ test('Ручное переназначение атомарно и пересч
     now = originalTime;
   }
 });
+
+test('Смешанный заказ резервирует бренды отдельно и выявляет пересортицу при равном общем остатке', async () => {
+  const previous=now;
+  try {
+    now=new Date(localTime('09:00').getTime()+12*86400000);
+    const {today:date}=calendar(config,now);
+    const {vehicles}=await success(http('GET','/resources','dispatcher'));
+    const brand=await post('manager','/products',{name:'Проверка бренда 19 л',water_price:23000});
+    assert.equal((await http('POST','/products','driver1',{name:'Чужая марка',water_price:1})).status,403);
+    const shift=await post('dispatcher','/shifts',{date,driver_id:accounts.driver1.user.id,vehicle_id:vehicles[0].id,start_min:480,end_min:1080});
+    await post('driver1','/shifts/'+shift.id+'/confirm',{});
+    const line=(product_id,water)=>({product_id,water});
+    const order=await post('operator','/orders',{...details(date),water:undefined,water_price:undefined,
+      items:[{...line(1,2),water_price:17000},line(brand.id,1)]});
+    assert.equal(Number(order.total),82000);
+    await post('dispatcher','/plan',{date,order_id:order.id,shift_id:shift.id});
+    const before=await day('driver1',date);
+    const trip=before.trips[0];
+    const start='/trips/'+trip.id+'/start';
+    assert.equal((await http('POST',start,'driver1',{actual_start:550,water:5},randomUUID())).status,400);
+    assert.equal((await http('POST',start,'driver1',{actual_start:550,water:5,items:[line(1,1),line(brand.id,4)]},randomUUID())).status,409);
+    await post('driver1',start,{actual_start:550,water:5,items:[line(1,2),line(brand.id,3)]});
+    const sale={customer_order_id:order.id,water:1,new_shells:0,water_price:23000,payment_method:'cash',empty:0,paid:true};
+    const salePath='/trips/'+trip.id+'/sale';
+    assert.equal((await http('POST',salePath,'driver1',{...sale,product_id:1},randomUUID())).status,409);
+    await post('driver1',salePath,{...sale,product_id:brand.id});
+    await success(http('PATCH','/products/'+brand.id,'manager',{name:'Новое имя',water_price:99999,active:false}));
+    const delivery=before.orders.find(o=>o.id===order.id);
+    await post('driver1','/orders/'+order.id+'/deliver',{version:delivery.version,empty:2,paid:true});
+    const completed=await day('driver1',date);
+    const history=completed.orders.find(o=>o.id===order.id);
+    assert.equal(history.items.find(i=>i.product_id===brand.id).name,'Проверка бренда 19 л');
+    assert.deepEqual(completed.trips[0].stock_items.map(p=>[p.product_id,p.water_left]),[[1,0],[brand.id,1]]);
+    await post('driver1','/trips/'+trip.id+'/return',{actual_return:650});
+    const report=await post('driver1','/shifts/'+shift.id+'/settle',{water:1,empty:2,cash:105000,bank:0,loader_minutes:0,items:[line(1,1)]});
+    assert.deepEqual(report.actual,report.expected);
+    assert.equal(report.matched,false);
+    assert.equal(Number(report.earnings),45000);
+    assert.deepEqual(report.stock_items.map(p=>[p.product_id,p.difference]),[[1,1],[brand.id,-1]]);
+    assert.match(await (await http('GET','/reports.csv?date='+date,'manager')).text(),/Новое имя · разница/);
+  } finally { now=previous; }
+});

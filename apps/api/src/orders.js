@@ -4,8 +4,10 @@ import {ensure} from './auth.js';
 import {dayView,audit} from './day.js';
 import {calendar} from './config.js';
 import {planOrders,retimeShift} from './routing.js';
+import {orderLines,saveLines} from './products.js';
 
 export async function createOrder(tx,user,data,config){
+  const basket=await orderLines(tx,data);
   let customer;
   if(data.customer_id){
     customer=await one(tx,'SELECT * FROM customers WHERE id=$1',[data.customer_id]);
@@ -15,11 +17,12 @@ export async function createOrder(tx,user,data,config){
       [data.name,data.phone,data.address]);
   }
   const result=await one(tx,`INSERT INTO orders(customer_id,name,phone,address,address_verified,date,window_start,window_end,
-    water,new_shells,water_price,shell_price,category,payment_method,company,floor,lift,checkpoint,height_limit_mm,note)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id,total`,
+    water,new_shells,water_price,shell_price,category,payment_method,company,floor,lift,checkpoint,height_limit_mm,note,water_subtotal)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id,total`,
     [customer.id,customer.name,customer.phone,data.address||customer.address,data.address_verified,data.date,data.window_start,
-    data.window_end,data.water,data.new_shells,data.water_price,config.shellPrice,data.category,data.payment_method,data.company,
-    data.floor,data.lift,data.checkpoint,data.height_limit_mm??null,data.note]);
+    data.window_end,basket.water,data.new_shells,basket.water_price,config.shellPrice,data.category,data.payment_method,data.company,
+    data.floor,data.lift,data.checkpoint,data.height_limit_mm??null,data.note,basket.water_subtotal]);
+  await saveLines(tx,result.id,basket.lines);
   await audit(tx,user,'order.created',result.id);
   return result;
 }

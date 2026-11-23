@@ -13,18 +13,35 @@ private fun JSONObject.text(key: String) = if (isNull(key)) "" else getString(ke
 private fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> =
     List(length()) { index -> transform(getJSONObject(index)) }
 
+internal data class Product(val id: Int, val name: String, val price: Long)
+internal data class OrderItem(val productId: Int, val name: String, val water: Int, val price: Long)
+internal data class StockItem(val productId: Int, val name: String, val planned: Int, val left: Int)
+internal data class StockReport(val productId: Int, val name: String, val expected: Int, val actual: Int, val difference: Int)
+internal data class SaleOption(val product: Product, val free: Int)
+
+internal fun saleOptions(products: List<Product>, stock: List<StockItem>, reserved: List<OrderItem>): List<SaleOption> {
+    val reservedByBrand = reserved.groupBy { it.productId }.mapValues { (_, items) -> items.sumOf { it.water } }
+    val productById = products.associateBy { it.id }
+    return stock.mapNotNull { row ->
+        val product = productById[row.productId] ?: return@mapNotNull null
+        val free = row.left - (reservedByBrand[row.productId] ?: 0)
+        if (free > 0) SaleOption(product, free) else null
+    }
+}
+
 internal data class Stop(
     val id: Int, val tripId: Int, val position: Int, val version: Int,
     val name: String, val address: String, val phone: String, val note: String,
     val floor: Int, val lift: Boolean, val checkpoint: Boolean,
     val start: Int, val end: Int, val eta: Int, val water: Int, val shells: Int,
     val waterPrice: Long, val shellPrice: Long, val total: Long, val bank: Boolean,
-    val company: String, val status: String, val paid: Boolean, val onSite: Boolean, val failureReason: String
+    val company: String, val status: String, val paid: Boolean, val onSite: Boolean, val failureReason: String,
+    val items: List<OrderItem>
 )
 
 internal data class Trip(
     val id: Int, val number: Int, val status: String, val plannedWater: Int,
-    val waterLeft: Int, val collected: Int, val startedAt: Int?
+    val waterLeft: Int, val collected: Int, val startedAt: Int?, val stock: List<StockItem>
 )
 
 internal data class Shift(
@@ -41,9 +58,13 @@ internal data class Counts(val water: Int, val empty: Int, val cash: Long, val b
 }
 internal data class Report(
     val matched: Boolean, val expected: Counts, val actual: Counts, val difference: Counts,
-    val earnings: Long, val unpaid: Long
+    val earnings: Long, val unpaid: Long, val stock: List<StockReport>
 )
-internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: List<Stop>, val report: Report?) {
+internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: List<Stop>, val report: Report?, val products: List<Product>) {
+    fun sales(trip: Trip): List<SaleOption> {
+        val reserved = stops.filter { it.tripId == trip.id && it.status == "assigned" }.flatMap { it.items }
+        return saleOptions(products, trip.stock, reserved)
+    }
     companion object {
         fun parse(data: JSONObject): Day {
             val shift = data.getJSONArray("shifts").optJSONObject(0)?.let {
@@ -54,7 +75,10 @@ internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: Lis
             val trips = data.getJSONArray("trips").mapObjects {
                 Trip(it.getInt("id"), it.getInt("number"), it.text("status"), it.getInt("planned_water"),
                     it.optInt("water_left"), it.optInt("empty_collected"),
-                    if (it.isNull("actual_start")) null else it.getInt("actual_start"))
+                    if (it.isNull("actual_start")) null else it.getInt("actual_start"),
+                    it.optJSONArray("stock_items")?.mapObjects { row ->
+                        StockItem(row.getInt("product_id"), row.getString("name"), row.getInt("planned_water"), row.getInt("water_left"))
+                    }.orEmpty())
             }.sortedBy { it.number }
             val stops = data.getJSONArray("orders").mapObjects {
                 Stop(it.getInt("id"), it.getInt("trip_id"), it.getInt("position"), it.getInt("version"),
@@ -63,14 +87,24 @@ internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: Lis
                     it.getInt("window_start"), it.getInt("window_end"), it.getInt("eta"),
                     it.getInt("water"), it.getInt("new_shells"), it.getLong("water_price"), it.getLong("shell_price"),
                     it.getLong("total"), it.text("payment_method") == "bank", it.text("company"),
-                    it.text("status"), it.optBoolean("paid"), it.text("origin") == "on_site", it.text("failure_reason"))
+                    it.text("status"), it.optBoolean("paid"), it.text("origin") == "on_site", it.text("failure_reason"),
+                    it.optJSONArray("items")?.mapObjects { row ->
+                        OrderItem(row.getInt("product_id"), row.getString("name"), row.getInt("water"), row.getLong("water_price"))
+                    }.orEmpty())
             }.sortedBy { it.position }
             val report = data.getJSONArray("reports").optJSONObject(0)?.let {
                 Report(it.getBoolean("matched"), Counts.parse(it.getJSONObject("expected")),
                     Counts.parse(it.getJSONObject("actual")), Counts.parse(it.getJSONObject("difference")),
-                    it.getLong("earnings"), it.getLong("unpaid"))
+                    it.getLong("earnings"), it.getLong("unpaid"),
+                    it.optJSONArray("stock_items")?.mapObjects { row ->
+                        StockReport(row.getInt("product_id"), row.getString("name"), row.getInt("expected"),
+                            row.getInt("actual"), row.getInt("difference"))
+                    }.orEmpty())
             }
-            return Day(shift, trips, stops, report)
+            val products = data.optJSONArray("products")?.mapObjects {
+                Product(it.getInt("id"), it.getString("name"), it.getLong("water_price"))
+            }.orEmpty().sortedBy { it.id }
+            return Day(shift, trips, stops, report, products)
         }
     }
 }

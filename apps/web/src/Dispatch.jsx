@@ -48,6 +48,7 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
         const extraSales=visits.filter(o=>o.origin==='on_site');
         return <article className="trip" key={t.id}><div className="row"><h3>Рейс {t.number}</h3><span className={'pill '+(t.status==='returned'?'good':'')}>{tripStates[t.status]}</span></div>
         <small>{stops.length} точек · {t.planned_water} бут. по плану{t.status==='active'?' · на борту '+t.water_left+' бут.':''}</small>
+        {t.stock_items?.length>0&&<details><summary>Загрузка по брендам</summary><dl className="detail-list">{t.stock_items.map(item=><React.Fragment key={item.product_id}><dt>{item.name}</dt><dd>План {item.planned_water} бут.{t.status!=='planned'?' · остаток '+item.water_left+' бут.':''}</dd></React.Fragment>)}</dl></details>}
         <ol className="track"><li><strong>{base}</strong><small>{t.actual_start!=null?'Выезд '+minuteText(t.actual_start):'Загрузка и выезд'}</small></li>
         {stops.map((o,i)=><li key={o.id}><button className="link-button" onClick={()=>onOpen(o.id)}>{i+1}. {o.address}</button><small>{o.name} · ETA {minuteText(o.eta)} · {o.water} бут.{o.status==='delivered'?' · доставлено':o.status==='failed'?' · срыв доставки':''}</small>
         {extraSales.filter(s=>s.source_order_id===o.id).map(s=><div key={s.id}><button className="link-button" onClick={()=>onOpen(s.id)}>Продажа на месте №{s.id} · {s.water} бут.</button></div>)}</li>)}

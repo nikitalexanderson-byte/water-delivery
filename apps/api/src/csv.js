@@ -14,6 +14,10 @@ const quote=value=>{
   return '"'+s.replaceAll('"','""')+'"';
 };
 export function reportCsv(reports){
-  const lines=[columns.map(([title])=>title),...reports.map(r=>columns.map(([,get])=>get(r)))];
+  const names=new Map(reports.flatMap(r=>r.stock_items.map(p=>[p.product_id,p.name])));
+  const stockColumns=[...names].flatMap(([id,name])=>[['expected','ожидалось'],['actual','сдано'],['difference','разница']]
+    .map(([field,label])=>[name+' · '+label,r=>r.stock_items.find(p=>p.product_id===id)?.[field]??0]));
+  const fields=[...columns,...stockColumns];
+  const lines=[fields.map(([title])=>title),...reports.map(r=>fields.map(([,get])=>get(r)))];
   return '\uFEFF'+lines.map(line=>line.map(quote).join(';')).join('\r\n');
 }

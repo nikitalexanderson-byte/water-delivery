@@ -7,9 +7,11 @@ import {Dispatch} from './Dispatch';
 import {Reports} from './Reports';
 import {Resources} from './Resources';
 import {PasswordDialog} from './PasswordDialog';
+import {Catalog,ProductDialog} from './Catalog';
 import './styles.css';
 
-const screens=[['orders','Заказы'],['routes','Маршруты'],['report','Отчёты']];
+const screens=[['orders','Заказы'],['routes','Маршруты'],['report','Отчёты'],['catalog','Каталог']];
+const titles={orders:'Заказы на день',routes:'Маршруты доставки',report:'Отчёт за день',catalog:'Каталог воды'};
 function loadSession() {
   try { return JSON.parse(sessionStorage.getItem('farvater.session')); } catch { return null; }
 }
@@ -95,12 +97,13 @@ function Workspace({session,exit,theme,toggle}) {
     <button className="icon-button" onClick={logout} aria-label="Выйти" title="Выйти"><Icon name="logout"/></button>
   </div></div></header>
   <nav aria-label="Разделы"><div className="nav-inner">{tabs.map(([id,name])=><button key={id} className={tab===id?'active':''} aria-current={tab===id?'page':undefined} onClick={()=>navigate(id)}><Icon name={id}/>{name}</button>)}</div></nav>
-  <main id="workspace" tabIndex="-1"><header className="page-head"><div><h1>{tab==='orders'?'Заказы на день':tab==='routes'?'Маршруты доставки':'Отчёт за день'}</h1>
-    {date&&<p className="sub long-date">{new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(date+'T12:00:00'))}</p>}</div>
-    <div className="actions"><label><span className="sr-only">Дата рабочего дня</span><input type="date" value={date} disabled={!config} onChange={e=>{if(e.target.value){setDate(e.target.value);setMessage('');}}}/></label>
+  <main id="workspace" tabIndex="-1"><header className="page-head"><div><h1>{titles[tab]}</h1>
+    {date&&tab!=='catalog'&&<p className="sub long-date">{new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(date+'T12:00:00'))}</p>}</div>
+    <div className="actions">{tab!=='catalog'&&<label><span className="sr-only">Дата рабочего дня</span><input type="date" value={date} disabled={!config} onChange={e=>{if(e.target.value){setDate(e.target.value);setMessage('');}}}/></label>}
     <button className="icon-button" onClick={refresh} aria-label="Обновить данные" title="Обновить данные"><Icon name="refresh"/></button>
     {editable&&tab==='orders'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'new'})}><Icon name="plus"/>Новый заказ</button>}
     {canPlan&&tab==='routes'&&<button disabled={!day} onClick={()=>setDialog({kind:'resources'})}><Icon name="truck"/>Смены и машины</button>}
+    {canReport&&tab==='catalog'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'product'})}><Icon name="plus"/>Новый бренд</button>}
   </div></header>
   {error&&<p className="error" role="alert">{error}{day?' Показаны последние полученные данные.':''}</p>}
   {message&&<p className="success" role="status">{message}</p>}
@@ -108,9 +111,11 @@ function Workspace({session,exit,theme,toggle}) {
   {day&&tab==='orders'&&<Journal orders={day.orders} onOpen={id=>setDialog({kind:'order',id})}/>}
   {day&&tab==='routes'&&<Dispatch key={date} day={day} date={date} config={config} canPlan={canPlan} send={send} refresh={refresh} onOpen={id=>setDialog({kind:'order',id})}/>}
   {day&&tab==='report'&&<Reports key={date} reports={day.reports} date={date} send={send} download={path=>response(path,{csv:true})} refresh={refresh}/>}
+  {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={canReport} edit={product=>setDialog({kind:'product',product})}/>}
   </main>
   {dialog?.kind==='password'&&<PasswordDialog send={send} close={()=>setDialog(null)} exit={exit}/>}
-  {day&&dialog?.kind==='new'&&<NewOrder date={dialog.previous?config.today:date} previous={dialog.previous} customers={day.customers} config={config} send={send} close={()=>setDialog(null)} saved={saved}/>}
+  {day&&dialog?.kind==='new'&&<NewOrder date={dialog.previous?config.today:date} previous={dialog.previous} customers={day.customers} products={day.products||[]} config={config} send={send} close={()=>setDialog(null)} saved={saved}/>}
+  {day&&dialog?.kind==='product'&&<ProductDialog product={dialog.product} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
   {day&&dialog?.kind==='resources'&&<Resources date={date} get={get} send={send} close={()=>setDialog(null)} refresh={saved}/>}
   {order&&dialog?.kind==='order'&&<OrderDetail key={order.id} order={order} trip={day.trips.find(t=>t.id===order.trip_id)} shift={day.shifts.find(s=>s.id===order.shift_id)} shifts={day.shifts} canPlan={canPlan} editable={editable} send={send} close={()=>setDialog(null)} saved={saved} repeat={previous=>setDialog({kind:'new',previous})}/>}
   </>;

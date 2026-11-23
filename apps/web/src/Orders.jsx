@@ -1,19 +1,21 @@
 import React, { useRef, useState } from 'react';
 import { Dialog, Empty, Field, Icon, money } from './ui';
 import { minuteText, orderStates, toMinutes } from './api';
+import {Basket,initialBasket} from './Basket';
 
 function fieldChange(update, key, checkbox = false) {
   return e => update(key, checkbox ? e.target.checked : e.target.value);
 }
 
-export function NewOrder({ date, customers, config, send, close, saved, previous }) {
+export function NewOrder({ date, customers, products, config, send, close, saved, previous }) {
+  const [lines,setLines]=useState(()=>initialBasket(products,previous,config.water_price));
   const [form, setForm] = useState(()=>({
     customer:'new', name:'', phone:'', address:'', date, start:'09:00', end:'18:00',
-    water:'1', shells:'1', price:String(config.water_price / 100), category:'retail',
+    shells:'1', category:'retail',
     method:'cash', company:'', verified:false, shellSale:false, floor:'', lift:true, checkpoint:false, height:'', note:'',
     ...(previous ? {
       customer:String(previous.customer_id), address:previous.address, start:minuteText(previous.window_start), end:minuteText(previous.window_end),
-      water:String(previous.water), shells:String(previous.new_shells||1), shellSale:previous.new_shells>0, price:String(previous.water_price/100),
+      shells:String(previous.new_shells||1), shellSale:previous.new_shells>0,
       category:previous.category, method:previous.payment_method, company:previous.company||'', floor:previous.floor??'',
       lift:previous.lift, checkpoint:previous.checkpoint, height:previous.height_limit_mm?String(previous.height_limit_mm/1000):'', note:previous.note||'',
     }:{})
@@ -24,7 +26,8 @@ export function NewOrder({ date, customers, config, send, close, saved, previous
   const update=(key,v)=>setForm(f=>({...f,[key]:v}));
   const bind=(key, checkbox=false)=>({[checkbox?'checked':'value']:form[key],onChange:fieldChange(update,key,checkbox)});
   const shells = form.shellSale ? Number(form.shells) : 0;
-  const total = Number(form.water) * Math.round(Number(form.price) * 100) + shells * config.shell_price;
+  const waterCount=lines.reduce((sum,item)=>sum+Number(item.water),0);
+  const total=lines.reduce((sum,item)=>sum+Number(item.water)*Math.round(Number(item.price)*100),shells*config.shell_price);
   function chooseCustomer(e) {
     const customer = customers.find(c=>String(c.id)===e.target.value);
     setForm(f=>({...f,customer:e.target.value,name:customer?.name||'',phone:customer?.phone||'',address:customer?.address||'',verified:false}));
@@ -33,12 +36,16 @@ export function NewOrder({ date, customers, config, send, close, saved, previous
     e.preventDefault();
     setError('');
     if (form.start >= form.end) { setError('Конец окна должен быть позже начала.'); return; }
+    if(lines.some(line=>!products.some(p=>p.id===line.product_id&&p.active))){
+      setError('Выберите доступный бренд для каждой позиции.');return;
+    }
     setBusy(true);
     try {
       const payload={
         ...(form.customer==='new'?{name:form.name.trim(),phone:form.phone.trim()}:{customer_id:Number(form.customer)}),
         address:form.address.trim(), date:form.date, window_start:toMinutes(form.start), window_end:toMinutes(form.end),
-        water:Number(form.water),new_shells:shells,water_price:Math.round(Number(form.price)*100),
+        items:lines.map(line=>({product_id:line.product_id,water:Number(line.water),water_price:Math.round(Number(line.price)*100)})),
+        new_shells:shells,
         category:form.category,payment_method:form.method,company:form.method==='bank'?form.company.trim():'',
         address_verified:form.verified,lift:form.lift,checkpoint:form.checkpoint,note:form.note.trim(),
         ...(form.floor!==''?{floor:Number(form.floor)}:{}), ...(form.height!==''?{height_limit_mm:Math.round(Number(form.height)*1000)}:{}),
@@ -67,17 +74,16 @@ export function NewOrder({ date, customers, config, send, close, saved, previous
         <Field label="Дата доставки" wide><input type="date" {...bind('date')} required/></Field>
         <Field label="Принимают с"><input type="time" {...bind('start')} required/></Field><Field label="Принимают до"><input type="time" {...bind('end')} required/></Field>
       </div></fieldset>
-      <fieldset><legend>Вода и оплата</legend><div className="form-grid">
-        <Field label="Бутыли 19 л, шт."><input type="number" {...bind('water')} required min="1" max="10000" step="1"/></Field>
-        <Field label="За бутыль воды, ₽"><input type="number" {...bind('price')} required min="0.01" max="100000" step="0.01"/></Field>
+      <fieldset><legend>Состав заказа</legend><Basket lines={lines} setLines={setLines} products={products}/>
+      <div className="form-grid">
         <label className="check wide"><input type="checkbox" {...bind('shellSale',true)}/>Добавить новую тару</label>
-        {form.shellSale && <Field label={'Новая тара по '+money(config.shell_price)+', шт.'} wide><input type="number" {...bind('shells')} required min="1" max={form.water} step="1"/></Field>}
+        {form.shellSale && <Field label={'Новая тара по '+money(config.shell_price)+', шт.'} wide><input type="number" {...bind('shells')} required min="1" max={waterCount} step="1"/></Field>}
         <Field label="Категория"><select {...bind('category')}><option value="retail">Розница</option><option value="wholesale">Опт</option></select></Field>
         <Field label="Способ оплаты"><select {...bind('method')}><option value="cash">Наличные</option><option value="bank">Безналичный расчёт</option></select></Field>
         {form.method==='bank'&&<Field label="Название компании" wide><input {...bind('company')} required maxLength="160"/></Field>}
       </div></fieldset>
     </div>{error&&<p className="error" role="alert">{error}</p>}
-    <div className="dialog-footer"><div><small>Итого к оплате</small><strong aria-live="polite">{money(total)}</strong></div><button type="submit" className="primary" disabled={busy}>{busy?'Сохраняем…':'Создать заказ'}</button></div>
+    <div className="dialog-footer"><div><small>Итого к оплате · {waterCount} бут.</small><strong aria-live="polite">{money(total)}</strong></div><button type="submit" className="primary" disabled={busy||!products.some(p=>p.active)}>{busy?'Сохраняем…':'Создать заказ'}</button></div>
     </form></Dialog>;
 }
 
@@ -126,7 +132,10 @@ export function OrderDetail({ order, trip, shift, shifts, canPlan, editable, sen
       saved(mode==='reschedule'?date:o.date,mode==='reschedule'?'Заказ перенесён.':'Заказ отменён.');
     }catch(err){setError(err.message);}finally{setBusy(false);}
   }
-  const rows=[['Клиент',o.name],['Телефон',o.phone],['Адрес',o.address],['Принимают',minuteText(o.window_start)+'–'+minuteText(o.window_end)],['Вода',o.water+' × '+money(o.water_price)],['Новая тара',o.new_shells+' × '+money(o.shell_price)],['Итого',money(o.total)],['Оплата',o.payment_method==='bank'?'Безналичный расчёт · '+o.company:'Наличные'],['Адрес проверен',o.address_verified?'Да':'Требует проверки'],['Экспедитор',shift?.driver_name],['Рейс',trip?.number],['Этаж',o.floor],['КПП',o.checkpoint?'Нужен пропуск':null],['Высота въезда',o.height_limit_mm?o.height_limit_mm/1000+' м':null],['Инструкции',o.note],['Причина в очереди',o.reason]];
+  const items=o.items?.length?o.items:[{name:'Вода',water:o.water,water_price:o.water_price}];
+  const rows=[['Клиент',o.name],['Телефон',o.phone],['Адрес',o.address],['Принимают',minuteText(o.window_start)+'–'+minuteText(o.window_end)],
+    ...items.map(i=>[i.name,i.water+' × '+money(i.water_price)+' = '+money(i.water*i.water_price)]),
+    ['Новая тара',o.new_shells+' × '+money(o.shell_price)],['Итого',money(o.total)],['Оплата',o.payment_method==='bank'?'Безналичный расчёт · '+o.company:'Наличные'],['Адрес проверен',o.address_verified?'Да':'Требует проверки'],['Экспедитор',shift?.driver_name],['Рейс',trip?.number],['Этаж',o.floor],['КПП',o.checkpoint?'Нужен пропуск':null],['Высота въезда',o.height_limit_mm?o.height_limit_mm/1000+' м':null],['Инструкции',o.note],['Причина в очереди',o.reason]];
   rows.push(['Источник',o.origin==='on_site'?'Продажа у клиента':null],['Причина срыва',o.failure_reason]);
   const canChange=editable&&['pending','assigned'].includes(o.status)&&(!trip||trip.status==='planned');
   const canReschedule=canChange||(editable&&o.status==='failed'&&!o.rescheduled_to);

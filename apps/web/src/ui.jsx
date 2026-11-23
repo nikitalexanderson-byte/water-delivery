@@ -18,6 +18,7 @@ const symbols = {
   warn:<><path d="M12 3 2 21h20Z"/><path d="M12 9v5m0 3v.5"/></>,
   arrow:<path d="M4 12h15m-6-6 6 6-6 6"/>,
   key:<><circle cx="8" cy="9" r="4"/><path d="m11 12 8 8 3-3-2-2-2 1-2-2"/></>,
+  catalog:<><path d="M4 4h7v7H4zm10 0h6v7h-6zM4 14h7v6H4zm10 0h6v6h-6z"/></>,
 };
 export function Icon({ name, size = 18 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{symbols[name]}</svg>;

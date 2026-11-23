@@ -104,6 +104,12 @@ fieldset:last-child { border-bottom:0 }
 .detail-list dt { color:var(--sub); padding-right:15px; }
 .change-shift { margin-bottom:14px; }
 .change-shift .actions { align-items:end; padding-block:4px 12px }
+.basket-lines { display:grid; gap:12px; }
+.basket-line { background:var(--inset); display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.basket-subtotal { display:flex; justify-content:space-between; align-items:center; color:var(--sub); font-size:.85rem; }
+.basket-subtotal strong { margin-left:3px; color:var(--ink); }
+.add-line { margin-block:10px 4px; }
+.stock-caption { text-align:left; font-weight:650; padding:8px 0; }
 .dispatch { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,2fr); gap:16px; align-items:start; }
 .shift-list, .trip-list,.queue { padding:0 19px 18px; }
 .shift { display:block; width:100%; margin-top:9px; text-align:left; line-height:1.55; padding:12px; }
