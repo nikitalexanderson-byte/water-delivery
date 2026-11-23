@@ -307,6 +307,15 @@ private fun DriverWorkspace(model: DriverModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (model.busy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (model.pending != null && !model.busy) {
+                Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    CardBlock {
+                        Heading("Операция ожидает ответа")
+                        Muted("Повторим сохранённую запись с тем же номером операции.")
+                        Action("Проверить и повторить", true, Mark.Refresh, click = model::retry)
+                    }
+                }
+            }
             pages.SaveableStateProvider("${tab.name}/$detail/${model.date}") {
                 Column(
                     Modifier.widthIn(max = 640.dp)
@@ -315,16 +324,7 @@ private fun DriverWorkspace(model: DriverModel) {
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    if (model.pending != null && !model.busy)
-                        CardBlock {
-                            Heading("Операция ожидает ответа")
-                            Text(model.pending?.optString("label").orEmpty())
-                            Muted("Повторно отправим сохранённые данные с тем же номером операции.")
-                            Action("Проверить и повторить", !model.busy, Mark.Refresh) {
-                                model.retry()
-                            }
-                        }
-                    else if (model.offline)
+                    if (model.pending == null && model.offline)
                         Feedback("Нет связи. Показана последняя загруженная смена.", true)
                     if (model.message.isNotBlank() && (!model.offline || !model.failed))
                         Feedback(model.message, model.failed)
