@@ -38,6 +38,8 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         private set
     var signedIn by mutableStateOf(false)
         private set
+    var officeSession by mutableStateOf<String?>(null)
+        private set
     var invitationRequired by mutableStateOf(false)
         private set
     var busy by mutableStateOf(false)
@@ -73,8 +75,10 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
                 invitationRequired = true
             } else {
                 restoreSession(session)
-                loadCached()
-                refresh()
+                if (officeSession == null) {
+                    loadCached()
+                    refresh()
+                }
             }
         }
     }
@@ -84,7 +88,8 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         val user = session.getJSONObject("user")
         account = accountScope(scope, user)
         name = user.getString("name")
-        pending = store.get("write:$account")
+        officeSession = if (isOfficeRole(user.getString("role"))) session.toString() else null
+        pending = if (officeSession == null) store.get("write:$account") else null
         signedIn = true
     }
     private fun loadCached() {
@@ -135,6 +140,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         token = ""
         account = ""
         signedIn = false
+        officeSession = null
         day = null
         pending = null
         name = ""
@@ -159,14 +165,29 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
             }
             return@action
         }
-        if (user.getString("role") != "driver") {
+        if (user.getString("role") != "driver" && !isOfficeRole(user.getString("role"))) {
             api.call("logout", session.getString("token"), JSONObject())
-            throw ApiError(403, "Для приложения нужен профиль экспедитора")
+            throw ApiError(403, "Для этой роли кабинет недоступен")
         }
         store.put("session:$scope", session)
         restoreSession(session)
-        loadCached()
-        update()
+        if (officeSession == null) {
+            loadCached()
+            update()
+        }
+    }
+    fun officeSignedOut(session: String, expired: Boolean) {
+        if (officeSession != session) return
+        forgetSession()
+        failed = expired
+        message = if (expired) "Сессия завершена. Войдите снова." else ""
+    }
+    suspend fun saveOfficeReport(session: String, date: String, uri: android.net.Uri) {
+        check(session == officeSession)
+        api.saveReport(date, token) {
+            getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                ?: throw IOException("Не удалось открыть файл")
+        }
     }
     fun logout() = action {
         try {

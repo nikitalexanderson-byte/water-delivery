@@ -8,6 +8,23 @@ const intents={
   join:{title:'Меня пригласили',description:'Вступлю в команду по коду от руководителя.',icon:'key'},
 };
 
+const androidApk='/downloads/farvater-driver.apk';
+
+function AccessLinks(){
+  const [apkAvailable,setApkAvailable]=useState(false);
+  useEffect(()=>{
+    const controller=new AbortController();
+    fetch(androidApk,{method:'HEAD',signal:controller.signal}).then(response=>{
+      if(!controller.signal.aborted)setApkAvailable(response.ok&&response.headers.get('content-type')==='application/vnd.android.package-archive');
+    }).catch(()=>{});
+    return ()=>controller.abort();
+  },[]);
+  return <footer className="access-links">
+    {apkAvailable&&<a className="access-map" href={androidApk}><Icon name="download"/>Скачать приложение Android</a>}
+    <a className="access-map" href="/?public-map=1"><Icon name="atlas"/>Учебная карта · 2 рейса</a>
+  </footer>;
+}
+
 function AccessPanel({title,description,children,showMap=false,account}) {
   const heading=useRef(null);
   const previousTitle=useRef(title);
@@ -25,7 +42,7 @@ function AccessPanel({title,description,children,showMap=false,account}) {
       {children}
     </main>
     {account}
-    {showMap&&<a className="access-map" href="/?public-map=1"><Icon name="atlas"/>Учебная карта · 2 рейса</a>}
+    {showMap&&<AccessLinks/>}
   </div></div>;
 }
 

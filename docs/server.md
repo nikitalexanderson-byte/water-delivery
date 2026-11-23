@@ -39,6 +39,14 @@ bash deploy/backup.sh
 
 Для обновления сохраните `bash deploy/backup.sh`, обновите checkout до выбранного коммита и повторите `docker compose … up --build -d --wait`. Скрипт создаёт архив с закрытыми правами и проверяет его читаемость. Для восстановления откройте отдельную пустую БД. Храните копию вне VPS. CI проверяет запуск стека за Caddy и восстановление дампа в отдельную одноразовую БД.
 
+### Выкладка тестового стенда через GitHub Actions
+
+`Release staging` запускается вручную только из `main`. В окружении GitHub `staging` задайте переменные `STAGING_SITE_URL` с HTTPS-адресом панели, `STAGING_HOST` с SSH-адресом и `STAGING_SSH_KNOWN_HOSTS` с проверенным ключом хоста. Секреты `STAGING_SSH_PRIVATE_KEY`, `STAGING_ANDROID_KEYSTORE` (PKCS#12 в Base64) и `STAGING_ANDROID_KEYSTORE_PASSWORD` хранятся в GitHub. Псевдоним ключа подписи APK — `farvater-staging`.
+
+На VPS checkout `main` и `.env.vps` находятся в `/opt/farvater`, владелец — `farvater-deploy`. Этому пользователю нужен доступ к Docker. Скопируйте `deploy/staging-release.sh` в `/usr/local/sbin/farvater-staging-release` с владельцем `root` и режимом `0755`. Для ключа выкладки укажите `restrict,command="/usr/local/sbin/farvater-staging-release"` в `authorized_keys`. Приватный ключ администратора и приватный ключ выкладки должны различаться.
+
+Выкладка проверяет подпись APK, создаёт копию существующей БД и обновляет стенд до проверенного коммита `main`. После успешного запуска новый APK появляется на экране входа и по пути `/downloads/farvater-driver.apk`. GitHub Actions проверяет HTTPS, готовность API и совпадение опубликованного файла с собранным APK. Флаг `build_only` оставляет подписанный APK в артефактах проверки и пропускает все шаги на VPS. Для обновления установленного приложения сохраняйте тот же ключ подписи. При переходе со старого debug APK с другой подписью понадобится удалить debug-версию перед установкой.
+
 ### Выгрузка в Google Таблицы
 
 Назначьте отдельный лист, доступный сервисному аккаунту Google на редактирование, и включите Sheets API в его проекте. В `.env.vps` заполните `SHEETS_TEAM_ID`, `SHEETS_SPREADSHEET_ID`, `SHEETS_TAB`, `SHEETS_CLIENT_EMAIL` и `SHEETS_PRIVATE_KEY` (в многострочном значении или с `\n`) и установите `SHEETS_EXPORT_ENABLED=true`. Интеграция ставит в очередь новые сдачи выбранной команды. Повторная отправка обновляет строку этого же отчёта. Колонки включают воду, тару, нал, безнал, вознаграждение и часы грузчика. Статус виден в «Отчётах».

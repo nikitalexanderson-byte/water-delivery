@@ -63,6 +63,7 @@ services:
       - "${VPS_BIND:-0.0.0.0}:${VPS_HTTPS_PORT:-443}:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../downloads:/srv/downloads:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

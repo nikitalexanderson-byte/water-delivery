@@ -5,6 +5,8 @@ node_modules/
 .env.vps
 .playwright-cli/
 backups/
+downloads/
+.deploy.lock
 .local/
 dist/
 .gradle/

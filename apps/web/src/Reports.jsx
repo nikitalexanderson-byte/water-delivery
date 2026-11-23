@@ -1,5 +1,6 @@
 import React, {useState} from 'react';
 import {money, Empty, Icon} from './ui';
+import {isAndroidOffice} from './api';
 
 const categories=[['water','Полные бутыли','шт.'],['empty','Пустая тара','шт.'],['cash','Наличные','₽'],['bank','Безналичные','₽']];
 const display=(n,unit)=>unit==='₽'?money(n):n+' '+unit;
@@ -9,6 +10,10 @@ export function Reports({reports,date,send,download,refresh}) {
   const [selectedId,setSelectedId]=useState(()=>reports.find(r=>!r.reviewed&&!r.matched)?.id??reports[0]?.id);
   const [error,setError]=useState('');
   async function exportDay() {
+    if(isAndroidOffice()){
+      window.location.assign('/__farvater_android/report?date='+encodeURIComponent(date));
+      return;
+    }
     setError('');setBusy(true);
     try {
       const blob=await download('/reports.csv?date='+date);

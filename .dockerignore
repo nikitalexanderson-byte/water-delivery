@@ -4,6 +4,7 @@
 .env
 .env.*
 backups
+downloads
 .playwright-cli
 .local
 apps/android

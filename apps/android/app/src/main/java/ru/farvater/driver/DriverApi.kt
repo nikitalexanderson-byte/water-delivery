@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.io.IOException
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.KeyStore
@@ -19,6 +20,24 @@ import org.json.JSONObject
 internal class ApiError(val status: Int, message: String) : IOException(message)
 
 internal class DriverApi {
+    suspend fun saveReport(date: String, token: String, destination: () -> OutputStream) = withContext(Dispatchers.IO) {
+        val day = java.time.LocalDate.parse(date)
+        val connection = URL("${BuildConfig.API_URL}/api/reports.csv?date=$day").openConnection() as HttpURLConnection
+        try {
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 8000
+            connection.readTimeout = 20000
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            connection.setRequestProperty("Accept", "text/csv")
+            if (connection.responseCode != 200)
+                throw ApiError(connection.responseCode, "Не удалось получить отчёт.")
+            if (!connection.contentType.orEmpty().substringBefore(';').equals("text/csv", true))
+                throw IOException("Неожиданный формат отчёта")
+            connection.inputStream.use { source -> destination().use { output -> source.copyTo(output) } }
+        } finally {
+            connection.disconnect()
+        }
+    }
     suspend fun call(
         path: String, token: String = "", body: JSONObject? = null, key: String? = null,
         readTimeoutMs: Int = 12_000,

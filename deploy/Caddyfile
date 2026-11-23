@@ -5,5 +5,14 @@
 		Permissions-Policy "geolocation=(self)"
 		-Server
 	}
-	reverse_proxy api:8080
+	handle /downloads/farvater-driver.apk {
+		root * /srv
+		header Content-Type application/vnd.android.package-archive
+		header Content-Disposition "attachment; filename=farvater-driver.apk"
+		header Cache-Control "no-cache"
+		file_server
+	}
+	handle {
+		reverse_proxy api:8080
+	}
 }

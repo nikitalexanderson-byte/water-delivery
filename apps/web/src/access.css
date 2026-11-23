@@ -93,6 +93,7 @@
 }
 
 .access-map { justify-self:center; font-size:.9rem; text-underline-offset:4px; }
+.access-links { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:0 18px; }
 .access-account { flex-wrap:wrap; gap:8px 14px; font-size:.88rem; }
 .access-account > span { min-width:0; overflow-wrap:anywhere; }
 .access-account button { background:transparent; color:inherit; border-color:#829ba5; min-height:44px; }

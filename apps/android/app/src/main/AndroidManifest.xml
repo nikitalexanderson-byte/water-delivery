@@ -9,7 +9,7 @@
             <data android:scheme="tel" />
         </intent>
     </queries>
-    <application android:label="ФАРВАТЕР · Экспедитор" android:allowBackup="false" android:icon="@drawable/ic_farvater"
+    <application android:label="ФАРВАТЕР" android:allowBackup="false" android:icon="@drawable/ic_farvater"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <receiver android:name=".CallReceiver" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"

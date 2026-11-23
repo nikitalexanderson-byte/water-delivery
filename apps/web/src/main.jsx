@@ -1,6 +1,6 @@
 import React,{ useCallback,useEffect,useRef,useState } from 'react';
 import {createRoot} from 'react-dom/client';
-import {request} from './api';
+import {isAndroidOffice,request} from './api';
 import {Brand,Icon} from './ui';
 import {Journal,NewOrder,OrderDetail} from './Orders';
 import {Dispatch} from './Dispatch';
@@ -144,7 +144,14 @@ function App() {
   const showMap=new URLSearchParams(location.search).has('public-map');
   const [theme,setTheme]=useState(()=>localStorage.getItem('farvater.theme') || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'));
   useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('farvater.theme',theme);},[theme]);
-  const exit=useCallback(hint=>{sessionStorage.removeItem('farvater.session');setSession(null);setInitialError(hint);},[]);
+  const exit=useCallback(hint=>{
+    sessionStorage.removeItem('farvater.session');
+    if(isAndroidOffice()){
+      window.location.replace('/__farvater_android/signed-out');
+      return;
+    }
+    setSession(null);setInitialError(hint);
+  },[]);
   const login=value=>{sessionStorage.setItem('farvater.session',JSON.stringify(value));setSession(value);};
   useEffect(()=>{
     if(session&&!showMap)return;

@@ -52,7 +52,12 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (dark) Dark else Light) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        if (model.signedIn) DriverWorkspace(model) else SignIn(model)
+                        val office = model.officeSession
+                        when {
+                            office != null -> key(office) { OfficeWorkspace(office, model) }
+                            model.signedIn -> DriverWorkspace(model)
+                            else -> SignIn(model)
+                        }
                     }
                 }
             }
@@ -82,7 +87,7 @@ private fun SignIn(model: DriverModel) {
                 Wordmark(true)
                 Spacer(Modifier.height(26.dp))
                 Text(
-                    "Кабинет\nэкспедитора",
+                    "Вход в\nФАРВАТЕР",
                     modifier = Modifier.semantics { heading() },
                     color = Color.White,
                     fontSize = 36.sp,

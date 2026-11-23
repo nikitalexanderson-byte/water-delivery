@@ -20,6 +20,10 @@ export async function request(path, { token, method = 'GET', body, signal, csv =
   return response.status === 204 ? {} : response.json();
 }
 
+export function isAndroidOffice() {
+  return navigator.userAgent.includes('FarvaterAndroidOffice/1');
+}
+
 export function minuteText(value) {
   if (value === null || value === undefined) return '—';
   const n = Number(value);

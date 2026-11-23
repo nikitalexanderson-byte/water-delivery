@@ -79,6 +79,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cp .env.vps.example .env.vps
+      - name: Add an APK download fixture
+        run: |
+          install -d downloads
+          printf 'farvater-download-fixture\n' > downloads/farvater-driver.apk
       - run: docker compose --env-file .env.vps -f deploy/compose.vps.yml config --quiet
       - run: docker compose --env-file .env.vps -f deploy/compose.vps.yml up --build --wait --wait-timeout 150
       - name: Verify the proxy and restore a fresh backup in a separate database
@@ -86,6 +90,8 @@ jobs:
         run: |
           curl --retry 8 --retry-connrefused --retry-delay 1 -fsS http://localhost:19080/health/ready
           curl -fsS http://localhost:19080/route-map/example.json > /dev/null
+          curl -fsSI http://localhost:19080/downloads/farvater-driver.apk | grep -iF 'content-type: application/vnd.android.package-archive'
+          curl -fsS http://localhost:19080/downloads/farvater-driver.apk | cmp - downloads/farvater-driver.apk
           dump=$(bash deploy/backup.sh "$RUNNER_TEMP/farvater-backup")
           compose=(docker compose --env-file .env.vps -f deploy/compose.vps.yml)
           "${compose[@]}" exec -T db createdb -U "$POSTGRES_USER" farvater_restore

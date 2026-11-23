@@ -1,6 +1,13 @@
 import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 
+test('экран входа показывает ссылку на APK, когда сервер раздаёт файл',async({page})=>{
+  await page.route('**/downloads/farvater-driver.apk',route=>route.fulfill({status:200,
+    contentType:'application/vnd.android.package-archive',body:''}));
+  await page.goto('/');
+  await expect(page.getByRole('link',{name:'Скачать приложение Android'})).toHaveAttribute('href','/downloads/farvater-driver.apk');
+});
+
 async function register(page,name,intent){
   await page.goto('/');
   await page.getByRole('button',{name:'Создать аккаунт',exact:true}).click();
