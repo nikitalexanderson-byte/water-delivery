@@ -1,7 +1,7 @@
 import React,{ useCallback,useEffect,useRef,useState } from 'react';
 import {createRoot} from 'react-dom/client';
 import {request} from './api';
-import {Brand,Field,Icon} from './ui';
+import {Brand,Icon} from './ui';
 import {Journal,NewOrder,OrderDetail} from './Orders';
 import {Dispatch} from './Dispatch';
 import {Reports} from './Reports';
@@ -12,7 +12,8 @@ import {Registration} from './Registration';
 import {Sidebar,DayToolbar,titles} from './WorkspaceShell';
 import {Customers} from './Customers';
 import {OrderCalendar} from './OrderCalendar';
-import {TeamDialog,TeamOnboarding} from './Teams';
+import {TeamDialog} from './Teams';
+import {Login,TeamOnboarding} from './Access';
 import './styles.css';
 import './workspace.css';
 import './teams.css';
@@ -29,35 +30,6 @@ function workspaceLocation(role){
   const valid=Object.hasOwn(titles,view)&&!(view==='report'&&role==='operator')&&
     (role!=='driver'||view==='orders'||view==='atlas');
   return {tab:valid?view:'orders',demo:view==='atlas'&&params.get('example')==='1'};
-}
-
-function Login({onLogin,initialError,registration}) {
-  const [signup,setSignup]=useState(false);
-  const [error,setError]=useState(initialError);
-  const [busy,setBusy]=useState(false);
-  async function enter(e) {
-    e.preventDefault();setError('');setBusy(true);
-    const form=new FormData(e.currentTarget);
-    try {
-      if(signup&&form.get('password')!==form.get('confirmation'))throw new Error('Пароли различаются.');
-      const value=await request(signup?'/register':'/login',{method:'POST',body:{
-        email:form.get('email').trim(),password:form.get('password'),...(signup?{name:form.get('name').trim()}:{})}});
-      onLogin(value);
-    }catch(err){setError(err.message);}finally{setBusy(false);}
-  }
-  return <div className="login-shell"><div className="login-card"><div className="brand-bar"><Brand/></div><form onSubmit={enter}><h1>{signup?'Создать аккаунт':'Вход в ФАРВАТЕР'}</h1>
-    {signup&&<Field label="Ваше имя"><input name="name" autoComplete="name" autoFocus required maxLength={120}/></Field>}
-    <Field label="Электронная почта"><input type="email" name="email" autoComplete="username" required autoFocus={!signup} placeholder="name@farvater.test"/></Field>
-    <Field label="Пароль"><input type="password" name="password" autoComplete={signup?'new-password':'current-password'} minLength={signup?10:undefined} maxLength={128} required/></Field>
-    {signup&&<small className="sub">Минимум 10 символов.</small>}
-    {signup&&<Field label="Повторите пароль"><input type="password" name="confirmation" autoComplete="new-password" required maxLength={128}/></Field>}
-    {error&&<p role="alert" className="error">{error}</p>}
-    <button className="primary" disabled={busy}>{busy?'Подождите…':signup?'Зарегистрироваться':'Войти'}<Icon name="arrow"/></button>
-    <div className="login-links">
-      {registration&&<button type="button" className="link-button" disabled={busy} onClick={()=>{setSignup(x=>!x);setError('');}}>{signup?'Вернуться ко входу':'Создать аккаунт'}</button>}
-      <a href="/?public-map=1"><Icon name="atlas"/> Учебная карта · 2 рейса</a>
-    </div>
-  </form></div></div>;
 }
 
 function Workspace({session,exit,theme,toggle}) {
@@ -127,13 +99,13 @@ function Workspace({session,exit,theme,toggle}) {
     <div className="work-area"><DayToolbar config={config} date={date} choose={d=>{setDate(d);setMessage('');}} global={global} refresh={refresh} updatedAt={snapshot?.updatedAt}/>
     <main id="workspace" tabIndex="-1"><header className="page-head"><div><h1>{tab==='orders'&&user.role==='driver'?'Мои заказы':titles[tab]}</h1>
       {date&&!global&&<p className="sub long-date">{new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(date+'T12:00:00'))}</p>}</div>
-      <div className="actions">
-    {tab==='orders'&&user.role!=='driver'&&<button disabled={!config} onClick={()=>setDialog({kind:'team'})}><Icon name="customers"/>Команда</button>}
-    {tab==='orders'&&<button disabled={!day} onClick={()=>setDialog({kind:'calendar'})}><Icon name="calendar"/>Календарь заказов</button>}
+      <div className="actions page-actions">
     {editable&&tab==='orders'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'new'})}><Icon name="plus"/>Новый заказ</button>}
+    {tab==='orders'&&<button disabled={!day} onClick={()=>setDialog({kind:'calendar'})}><Icon name="calendar"/>Календарь заказов</button>}
+    {tab==='orders'&&user.role!=='driver'&&<button disabled={!config} onClick={()=>setDialog({kind:'team'})}><Icon name="customers"/>Команда</button>}
+    {tab==='routes'&&user.role==='manager'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'employee'})}><Icon name="plus"/>Добавить сотрудника</button>}
     {canPlan&&tab==='routes'&&<button disabled={!day} onClick={()=>setDialog({kind:'resources'})}><Icon name="truck"/>Смены и машины</button>}
     {tab==='routes'&&canPlan&&<button disabled={!day} onClick={()=>setDialog({kind:'vehicle'})}><Icon name="plus"/>Добавить машину</button>}
-    {tab==='routes'&&user.role==='manager'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'employee'})}><Icon name="plus"/>Добавить сотрудника</button>}
     {canReport&&tab==='catalog'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'product'})}><Icon name="plus"/>Новый бренд</button>}
   </div></header>
   {error&&<p className="error" role="alert">{error}{day?' Показаны последние полученные данные.':''}</p>}

@@ -1,27 +1,20 @@
 .team-shell{min-height:100dvh}
 .team-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px clamp(18px,4vw,64px);background:#102639;color:#f2f9fa}
-.team-bar>div{display:flex;align-items:center;gap:12px}
 .team-bar a{color:#b9ffeb;text-underline-offset:3px}
-.team-onboarding,.public-atlas{width:min(100% - 36px,1100px);margin:0 auto;padding:44px 0}
-.team-onboarding h1,.public-atlas h1{margin-bottom:10px}
-.team-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:22px}
-.team-options form{display:grid;align-content:start;gap:14px;padding:clamp(16px,3vw,30px);background:var(--surface);border:1px solid var(--line);border-radius:13px}
-.team-options form p,.team-dialog p{margin:0}
-.team-options form button,.team-form button{justify-self:start}
-.team-symbol{display:grid;place-items:center;width:46px;height:46px;background:var(--green-bg);color:var(--green);border-radius:10px}
+.public-atlas{width:min(100% - 36px,1100px);margin:0 auto;padding:44px 0}
+.public-atlas h1{margin-bottom:10px}
+.team-dialog p{margin:0}
 .team-members{margin:12px 0 16px;padding:0;list-style:none;max-height:240px;overflow:auto}
 .team-members li{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .team-members span{color:var(--sub)}
 .team-form,.invite-result{display:grid;gap:10px;padding:12px 0}
 .invite-result{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px}
-.invite-result button{justify-self:start}
+.team-form button,.invite-result button{justify-self:center;min-height:44px;text-align:center}
+.invite-result [role=status]{justify-self:center;color:var(--green);text-align:center}
 .invite-result input{font:inherit;font-family:Consolas,monospace}
-.login-links{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
-.login-links a{display:inline-flex;align-items:center;min-height:44px;gap:6px;color:var(--blue);text-underline-offset:3px}
 .public-atlas .measure{color:var(--measure)}
 .profile small{overflow-wrap:anywhere}
 @media(max-width:660px){
-  .team-options{grid-template-columns:1fr}
-  .team-onboarding,.public-atlas{padding-top:25px}
+  .public-atlas{padding-top:25px}
   .team-bar{flex-wrap:wrap}
 }

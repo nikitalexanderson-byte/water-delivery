@@ -1,0 +1,106 @@
+.access-shell {
+  min-height:100dvh;
+  display:flex;
+  padding:clamp(20px,5vw,54px) clamp(14px,4vw,32px);
+  background:linear-gradient(145deg,#1b424b,#102639 75%);
+}
+
+.access-wrap {
+  display:grid;
+  gap:16px;
+  width:min(100%,30rem);
+  min-width:0;
+  margin:auto;
+}
+
+.access-brand {
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  margin-bottom:6px;
+}
+
+.access-card {
+  display:grid;
+  gap:18px;
+  min-width:0;
+  padding:clamp(20px,5vw,36px);
+  background:var(--surface);
+  border-radius:16px;
+  box-shadow:0 12px 32px #071b2938;
+}
+
+.access-heading {
+  display:grid;
+  gap:8px;
+  margin-bottom:4px;
+  text-align:center;
+}
+
+.access-heading h1 {
+  font-size:clamp(1.65rem,4vw,2.1rem);
+  letter-spacing:-.034em;
+  text-wrap:balance;
+}
+
+.access-heading h1:focus { outline:none; }
+.access-heading p { color:var(--sub); font-size:.94rem; line-height:1.5; text-wrap:pretty; }
+.access-form,.access-choices { display:grid; gap:14px; }
+.access-form .field { font-size:.9rem; gap:6px; }
+.access-form input:not([type=checkbox]) { width:100%; min-height:46px; font-size:1rem; }
+.access-form > button,.access-secondary { min-height:46px; text-align:center; }
+.access-form .error { margin:0; }
+.access-form .access-hint { margin-top:-10px; }
+.access-card .access-back { justify-self:center; justify-content:center; min-height:44px; text-align:center; }
+.access-secondary { color:var(--blue); border-color:var(--line); }
+
+.access-choice {
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  gap:12px;
+  width:100%;
+  min-height:70px;
+  padding:12px;
+  border-color:var(--line);
+  border-radius:10px;
+  text-align:left;
+}
+
+.access-choice:hover { border-color:var(--input); }
+.access-choice > svg { color:var(--blue); }
+.access-symbol {
+  display:grid;
+  place-items:center;
+  width:40px;
+  height:40px;
+  border-radius:8px;
+  background:var(--green-bg);
+  color:var(--green);
+}
+
+.access-choice-text { display:grid; gap:4px; }
+.access-choice-text strong { font-size:.96rem; }
+.access-choice-text span { color:var(--sub); font-weight:400; font-size:.86rem; line-height:1.35; }
+
+.access-map,.access-account {
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:8px;
+  min-height:44px;
+  color:#dcf1f3;
+  text-align:center;
+}
+
+.access-map { justify-self:center; font-size:.9rem; text-underline-offset:4px; }
+.access-account { flex-wrap:wrap; gap:8px 14px; font-size:.88rem; }
+.access-account > span { min-width:0; overflow-wrap:anywhere; }
+.access-account button { background:transparent; color:inherit; border-color:#829ba5; min-height:44px; }
+.access-account button:hover { background:#28525a; }
+.access-shell :is(.access-map,.access-account button):focus-visible { outline-color:#ffcf6c; }
+
+@media(max-width:350px) {
+  .access-choice { gap:8px; padding:10px; }
+  .access-symbol { width:32px; height:32px; }
+  .access-symbol svg { width:18px; height:18px; }
+}

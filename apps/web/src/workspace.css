@@ -28,6 +28,9 @@
 h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.052em; }
 .page-head .long-date { margin-top:7px; font-size:.91rem }
 .page-head .actions button { min-height:42px; }
+.page-head .page-actions { gap:8px; }
+.page-actions button { text-align:center; }
+.page-actions svg { flex-shrink:0; }
 .panel { border-radius:12px; }
 .panel-head h2 span,.fleet-selector h2 span { display:inline-flex; align-items:center; justify-content:center; min-width:23px; padding:1px 5px; color:var(--sub); font-weight:600; font-size:.76rem; line-height:1.5; border-radius:5px; background:var(--inset); vertical-align:middle; }
 .panel-head h2 { font-size:1.14rem; }
@@ -133,11 +136,6 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
 .report-shifts>button {display:grid;gap:4px;width:100%;justify-content:start;text-align:left;border:0;border-top:1px solid var(--line);border-radius:0;}
 .report-shifts>button[aria-pressed=true] {background:var(--green-bg);color:var(--green);}
 .report-layout .report-card {padding:18px;gap:16px;}.report-card>.pill {justify-self:start;}
-.login-shell {background:#132b3c;}
-.login-card {display:grid;grid-template-columns:minmax(175px,.65fr) minmax(0,1fr);width:min(100%,720px);border-color:#375466;box-shadow:0 18px 55px #05121d40;}
-.login-card .brand-bar {position:relative;overflow:hidden;background:#183f49;padding:24px 20px;}
-.login-card .brand-bar:after {content:"";position:absolute;left:-10%;bottom:-8%;width:120%;height:66%;background:#28525a;clip-path:polygon(0 72%,28% 72%,50% 12%,100% 12%,83% 43%,62% 43%,40% 100%,0 100%);}
-.login-card form {padding:30px 28px;gap:17px;}.login-card h1 {line-height:1.15;}
 :root[data-theme=dark] .sidebar {background:#091825;}
 @media(max-width:1250px) {
   .app-shell {grid-template-columns:184px minmax(0,1fr)}
@@ -164,6 +162,9 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
   .report-layout {grid-template-columns:minmax(0,1fr);}.report-card .trip-head,.route-pane-head {flex-wrap:wrap;}
   .day-toolbar {padding:8px 12px; min-height:48px; gap:5px; }.day-switch{gap:6px;}.toggle-days button{min-height:30px;padding:4px 8px;}.calendar-control input:not([type=checkbox]) {width:125px;font-size:.78rem;}
   .work-area main {padding:18px 12px 40px;}.page-head{margin-bottom:15px;gap:10px;}.page-head h1 {font-size:1.85rem;}.page-head .long-date{font-size:.8rem}
+  .page-head .page-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; }
+  .page-head .page-actions button { min-height:46px; padding-inline:8px; }
+  .page-actions .primary,.page-actions > :only-child { grid-column:1/-1; }
   .order-overview {grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:14px;}.order-overview>div {padding:12px 14px;}
   .order-overview .progress-summary {grid-column:1/-1;border-bottom:1px solid var(--line);gap:8px;}
   .order-overview .volume-stat{border-left:0;}.order-overview .stat-label{font-size:.77rem;}.order-overview .stat-label svg{width:15px;}
@@ -174,7 +175,6 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
   .order-editor .editor-grid {grid-template-columns:minmax(0,1fr);gap:2px;}.order-editor {width:calc(100% - 12px);max-height:94dvh;}
 }
 @media(max-width:600px) {
-  .login-card {display:block;max-width:410px;}.login-card .brand-bar {padding:14px 21px;}.login-card .brand-bar:after {display:none;}
   .journal-table tr {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:12px 14px;}
   .journal-table td {padding:2px!important;display:flex;align-items:baseline;gap:7px;font-size:.82rem;}
   .journal-table td:nth-child(1){grid-column:1;grid-row:1;}.journal-table td:nth-child(2){grid-column:1/-1;grid-row:2;display:block;}
