@@ -70,6 +70,24 @@ test('оператор ищет заказ с клавиатуры и возвр
   await expect(page.getByRole('button',{name:'Распределить заказы'})).toHaveCount(0);
 });
 
+test('форма заказа, календарь и команда открываются и закрываются на коротком экране',async({page})=>{
+  await page.setViewportSize({width:360,height:600});
+  await login(page,'dispatcher');
+  for(const title of ['Новый заказ','Календарь заказов','Команда']){
+    await page.getByRole('button',{name:title,exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:title,exact:true});
+    await expect(dialog).toBeVisible();
+    const bounds=await dialog.boundingBox();
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y+bounds.height).toBeLessThanOrEqual(600);
+    const close=dialog.getByRole('button',{name:'Закрыть окно'});
+    await expect(close).toBeInViewport();
+    if(title==='Новый заказ')await expect(dialog.getByRole('button',{name:'Создать заказ'})).toBeInViewport();
+    await close.click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
+
 test('диспетчер создаёт следующую рабочую смену',async({page,request})=>{
   const config=await (await request.get('/api/config')).json();
   const future=new Date(Date.parse(config.tomorrow+'T00:00:00Z')+86400000).toISOString().slice(0,10);

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 
 const symbols = {
   orders: <><path d="M7 4h12v16H5V6h2M9 3h6v4H9z"/><path d="M9 11h6m-6 4h5"/></>,
@@ -37,17 +37,18 @@ export function Field({ label, children, wide = false }) {
 
 export function Dialog({ title, close, children, className }) {
   const ref = useRef(null);
+  const heading = useId();
   useEffect(() => {
     const dialog = ref.current;
     const opener = document.activeElement;
     dialog.showModal();
     return () => {
       dialog.close();
-      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus({preventScroll:true});
     };
   }, []);
-  return <dialog ref={ref} className={className} aria-labelledby="dialog-heading" onCancel={e => { e.preventDefault(); close(); }}>
-    <header className="dialog-head"><h2 id="dialog-heading">{title}</h2><button type="button" className="icon-button" onClick={close} aria-label="Закрыть окно"><Icon name="close"/></button></header>
+  return <dialog ref={ref} className={className} aria-labelledby={heading} onCancel={e => { e.preventDefault(); close(); }}>
+    <header className="dialog-head"><h2 id={heading}>{title}</h2><button type="button" className="icon-button" onClick={close} aria-label="Закрыть окно"><Icon name="close"/></button></header>
     {children}
   </dialog>;
 }

@@ -204,7 +204,7 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
   .journal-rail{grid-template-columns:1fr;}.filter-bar {padding-inline:12px;gap:4px;}.filter-bar button {padding-inline:8px;min-height:40px;}
   .journal .panel-head {padding:13px 12px;}.journal .search {min-width:145px;flex:1;}.journal .search input {font-size:.8rem;max-width:145px;}
   .crew {min-width:196px;}.route-pane-head {padding:15px;}.trip-list,.queue {padding-inline:14px;}
-  .order-editor .editor-grid {grid-template-columns:minmax(0,1fr);gap:2px;}.order-editor {width:calc(100% - 12px);max-height:94dvh;}
+  .order-editor .editor-grid {grid-template-columns:minmax(0,1fr);gap:2px;}.order-editor {width:calc(100% - 12px);}
 }
 @media(max-width:600px) {
   .journal-table tr {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:12px 14px;}

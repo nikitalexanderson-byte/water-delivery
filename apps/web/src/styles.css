@@ -73,7 +73,12 @@ td small, td strong { display:block } td small { margin-top:3px; } td.num { text
 .error { background:var(--red-bg); color:var(--red) }
 .success { background:var(--green-bg); color:var(--green) }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); }
-dialog { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:14px; width:min(670px,calc(100% - 24px)); max-height:90dvh; padding:0; box-shadow:0 12px 70px #091e3433; }
+dialog {
+  position:fixed; inset:0; margin:auto; height:fit-content; max-height:calc(100% - 24px);
+  width:min(670px,calc(100% - 24px)); overflow:auto; overscroll-behavior:contain;
+  background:var(--surface); color:var(--ink); border:1px solid var(--line);
+  border-radius:14px; padding:0; box-shadow:0 12px 70px #091e3433;
+}
 dialog::backdrop { background:#081b2bac; }
 .dialog-head { position:sticky; top:0; z-index:1; background:var(--surface); border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:10px; padding:16px 22px; }
 .form-body,.detail-body { padding:8px 22px 20px; }
