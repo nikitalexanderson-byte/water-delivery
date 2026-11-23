@@ -19,13 +19,22 @@ export const order=z.object({customer_id:id.optional(), name:text.optional(),pho
   .refine(x=>x.customer_id || (x.name && x.phone && x.address),'Укажите имя, телефон и адрес клиента')
   .refine(x=>x.payment_method!=='bank'||x.company,'Для безнала укажите компанию')
   .refine(x=>x.new_shells<=x.water,'Количество новой тары превышает количество бутылей');
-export const plan=z.object({date,order_id:id.optional(),shift_id:id.optional()})
+export const plan=z.object({date,order_id:id.optional(),shift_id:id.optional(),version:id.optional()})
   .refine(x=>Boolean(x.order_id)===Boolean(x.shift_id),'Для ручного назначения выберите заказ и смену');
 export const shift=z.object({date,driver_id:id,vehicle_id:id,start_min:minute,end_min:minute,has_loader:z.boolean().default(false)})
   .refine(x=>x.end_min>x.start_min,'Окончание смены должно быть позже начала');
 export const vehicle=z.object({total_height_mm:id.max(15000).nullable(),extra_kg:count});
+export const newVehicle=vehicle.extend({name:text,capacity_kg:id.max(100000),length_mm:id.max(30000),body_height_mm:id.max(10000)})
+  .refine(x=>x.extra_kg<=x.capacity_kg,'Масса оборудования превышает грузоподъёмность');
+export const account=z.object({email:z.email().max(254).transform(s=>s.toLowerCase()),name:text,password:z.string().min(10).max(128),
+  role:z.enum(['manager','operator','dispatcher','driver'])});
 export const start=z.object({actual_start:minute,water:count.min(1)});
 export const complete=z.object({version:id,empty:count,paid:z.boolean()});
+export const failure=version.extend({reason:z.string().trim().min(1).max(500)});
+export const sale=z.object({customer_order_id:id,water:count.min(1),new_shells:count,water_price:money.max(10000000),
+  payment_method:z.enum(['cash','bank']),company:z.string().trim().max(200).default(''),paid:z.boolean(),empty:count})
+  .refine(x=>x.new_shells<=x.water,'Новой тары больше, чем воды')
+  .refine(x=>x.payment_method!=='bank'||x.company,'Для безнала укажите компанию');
 export const returned=z.object({actual_return:minute});
 export const settlement=z.object({water:count,empty:count,cash:money,bank:money,loader_minutes:minute});
 export const login=z.object({email:z.email().max(254).transform(v=>v.toLowerCase()),password:z.string().min(1).max(256)});

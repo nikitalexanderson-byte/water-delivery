@@ -36,3 +36,28 @@ jobs:
           TEST_DATABASE_URL: postgresql://farvater_ci:ci-local-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/farvater_ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:web
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose config --quiet
+      - run: docker compose up --build --wait --wait-timeout 120
+      - name: Verify the web panel and seeded PostgreSQL accounts
+        run: |
+          node --env-file=.env --input-type=module <<'JS'
+          const base='http://127.0.0.1:'+process.env.API_PORT;
+          const web=await fetch(base);
+          if(!web.ok || !(await web.text()).includes('ФАРВАТЕР')) throw Error('web panel');
+          const login=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({email:'dispatcher@farvater.test',password:process.env.DEMO_PASSWORD})});
+          if(!login.ok) throw Error('login '+login.status);
+          const {token}=await login.json();
+          const response=await fetch(base+'/api/resources',{headers:{Authorization:'Bearer '+token}});
+          if(!response.ok || (await response.json()).vehicles.length!==2) throw Error('fleet');
+          JS
+      - if: failure()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down

@@ -12,3 +12,12 @@
 - POST /api/shifts/:id/confirm {} водитель. POST /api/trips/:id/start {actual_start,water} водитель. POST /api/orders/:id/deliver {version,empty,paid:boolean} водитель. POST /api/trips/:id/return {actual_return} водитель. Для этих и следующих операций изменения склада и денег клиент передаёт заголовок Idempotency-Key с UUID, сохранённым на время повтора. Успех {ok:true}.
 - POST /api/shifts/:id/settle {water,empty,cash,bank,loader_minutes} водитель, возвращает отчёт (как reports[]). POST /api/reports/:id/review {} диспетчер/руководитель.
 - GET /api/reports.csv?date=YYYY-MM-DD авторизация dispatcher/manager. UTF-8 CSV с BOM и разделителем точка с запятой.
+
+### Дополнительные операции рабочего кабинета
+
+- GET /api/me возвращает профиль. POST /api/password {current_password,new_password} меняет пароль и отзывает все сессии. POST /api/accounts {email,name,role,password} доступен руководителю для создания персонального кабинета. Новый пароль 10–128 символов.
+- GET /api/resources возвращает {drivers,vehicles} диспетчеру и руководителю. POST /api/shifts {date,driver_id,vehicle_id,start_min,end_min,has_loader} создаёт смену. POST /api/vehicles {name,capacity_kg,extra_kg,length_mm,body_height_mm,total_height_mm} добавляет машину. PATCH /api/vehicles/:id {total_height_mm,extra_kg} доступен диспетчеру до назначения рейсов. Неизвестная полная высота хранится как null.
+- POST /api/orders/:id/verify-address {version} подтверждает проверку адреса. Для переназначения уже закреплённой точки POST /api/plan принимает {date,order_id,shift_id,version}. Отказ сохраняет весь исходный план.
+- POST /api/orders/:id/fail {version,reason} сохраняет причину недоставки. Статус failed завершает попытку. Запас и деньги сохраняются. Перенос такой доставки создаёт новый связанный заказ, историческая точка сохраняется в исходном рейсе.
+- POST /api/trips/:id/sale {customer_order_id,water,new_shells,water_price,payment_method,company,paid,empty} оформляет допродажу у клиента этого рейса. Вода для оставшихся заказов зарезервирована. Оплата и движения проводятся в одной транзакции. Повторный выезд или дополнительная ставка за точку при такой продаже не возникают. У дочернего заказа origin=on_site и source_order_id указывает на исходную точку.
+- Для fail и sale обязателен Idempotency-Key. Успешное действие с тем же UUID и содержимым возвращает прежний результат. Если тело изменилось, API возвращает 409. Клиент заново загружает день после ошибки версии. GET /api/config также отдаёт timezone для локальных Android-напоминаний.

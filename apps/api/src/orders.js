@@ -1,8 +1,9 @@
-import {rows,one} from './db.js';
+import {one,rows} from './db.js';
+import {rescheduleFailed} from './outcomes.js';
 import {ensure} from './auth.js';
 import {dayView,audit} from './day.js';
 import {calendar} from './config.js';
-import {planOrders} from './routing.js';
+import {planOrders,retimeShift} from './routing.js';
 
 export async function createOrder(tx,user,data,config){
   let customer;
@@ -23,17 +24,13 @@ export async function createOrder(tx,user,data,config){
   return result;
 }
 
-export async function allocate(tx,user,input,config,now){
-  const day=await dayView(tx,user,input.date,config,now);
-  const queue=day.orders.filter(o=>o.status==='pending' && (!input.order_id||input.order_id===o.id));
-  ensure(!input.order_id||queue.length,'Заказ уже назначен или относится к другой дате');
-  const {today,minute}=calendar(config,now);
-  ensure(input.date>=today,'Нельзя распределить заказы на прошедший день');
-  const result=planOrders({orders:queue,shifts:day.shifts,
-    trips:day.trips.map(t=>({...t,stops:day.orders.filter(o=>o.trip_id===t.id)})),
-    settings:config.routing,targetShiftId:input.shift_id,nowMin:input.date===today?minute:0});
-  for(const trip of result.trips){
-    let entity=day.trips.find(t=>t.shift_id===trip.shift_id && t.number===trip.number);
+function routeTrips(trips,orders){
+  return trips.map(trip=>({...trip,stops:orders.filter(o=>o.trip_id===trip.id && o.origin==='office' && o.status!=='failed')}));
+}
+
+async function persistPlans(tx,existing,plans){
+  for(const trip of plans){
+    let entity=existing.find(t=>t.shift_id===trip.shift_id && t.number===trip.number);
     if(!entity) entity=await one(tx,'INSERT INTO trips(shift_id,number) VALUES($1,$2) RETURNING id',[trip.shift_id,trip.number]);
     for(const stop of trip.stops){
       await tx.query(`UPDATE orders SET status='assigned',trip_id=$1,position=$2,eta=$3,version=version+1,reason=NULL
@@ -41,16 +38,70 @@ export async function allocate(tx,user,input,config,now){
         [entity.id,stop.position,stop.eta,stop.order_id]);
     }
   }
+}
+
+async function rebuildAfterRemoval(tx,shiftId,tripId,config,now){
+  const empty=await one(tx,`DELETE FROM trips WHERE id=$1 AND status='planned'
+    AND NOT EXISTS(SELECT 1 FROM orders WHERE trip_id=$1) RETURNING number`,[tripId]);
+  if(empty){
+    await tx.query("UPDATE trips SET number=number-1 WHERE shift_id=$1 AND number>$2 AND status='planned'",[shiftId,empty.number]);
+  }
+  const trips=await rows(tx,'SELECT * FROM trips WHERE shift_id=$1 ORDER BY number',[shiftId]);
+  if(!trips.some(trip=>trip.status==='planned')) return;
+  const shift=await one(tx,'SELECT s.*,s.date::text AS date FROM shifts s WHERE id=$1',[shiftId]);
+  const orders=await rows(tx,`SELECT o.* FROM orders o JOIN trips t ON o.trip_id=t.id
+    WHERE t.shift_id=$1 ORDER BY t.number,o.position,o.id`,[shiftId]);
+  const {today,minute}=calendar(config,now);
+  const plans=retimeShift({shift,trips:routeTrips(trips,orders),settings:config.routing,nowMin:shift.date===today?minute:0});
+  await persistPlans(tx,trips,plans);
+}
+
+export async function allocate(tx,user,input,config,now){
+  const {today,minute}=calendar(config,now);
+  ensure(input.date>=today,'Нельзя распределить заказы на прошедший день');
+  const day=await dayView(tx,user,input.date,config,now);
+  let queue=day.orders.filter(o=>o.status==='pending');
+  let source;
+  if(input.order_id){
+    const order=day.orders.find(o=>o.id===input.order_id);
+    ensure(order,'Заказ не найден на выбранную дату',404);
+    ensure(['pending','assigned'].includes(order.status),'Этот заказ нельзя назначить на рейс');
+    if(order.status==='assigned' || input.version!==undefined){
+      ensure(order.version===input.version,'Версия заказа изменилась. Обновите список и повторите назначение');
+    }
+    if(order.status==='assigned'){
+      source=day.trips.find(t=>t.id===order.trip_id);
+      ensure(source?.status==='planned','Переназначение возможно только до выезда');
+      ensure(source.shift_id!==input.shift_id,'Заказ уже в выбранной смене');
+    }
+    queue=[order];
+  }
+  // Исключаем исходную смену из подбора. До получения допустимого плана
+  // назначения, версии и ETA исходного маршрута остаются прежними.
+  const shifts=input.shift_id?day.shifts.filter(s=>s.id===input.shift_id):day.shifts;
+  const trips=input.shift_id?day.trips.filter(t=>t.shift_id===input.shift_id):day.trips;
+  const result=planOrders({orders:queue,shifts,trips:routeTrips(trips,day.orders),
+    settings:config.routing,targetShiftId:input.shift_id,nowMin:input.date===today?minute:0});
+  if(source && result.unassigned.length){
+    ensure(false,'Переназначение невозможно. '+result.unassigned[0].reason);
+  }
+  await persistPlans(tx,trips,result.trips);
+  if(source){
+    await rebuildAfterRemoval(tx,source.shift_id,source.id,config,now);
+    await audit(tx,user,'order.reassigned',input.order_id,{from_shift:source.shift_id,to_shift:input.shift_id,version:input.version});
+  }
   for(const issue of result.unassigned) await tx.query('UPDATE orders SET reason=$1 WHERE id=$2',[issue.reason,issue.order_id]);
   const assigned=queue.length-result.unassigned.length;
   await audit(tx,user,'routes.planned',null,{date:input.date,assigned,unassigned:result.unassigned});
   return {assigned,unassigned:result.unassigned};
 }
 
-export async function changeOrder(tx,user,id,input,action){
-  const order=await one(tx,`SELECT o.*,t.status AS trip_status FROM orders o LEFT JOIN trips t ON t.id=o.trip_id WHERE o.id=$1`,[id]);
+export async function changeOrder(tx,user,id,input,action,config,now){
+  const order=await one(tx,`SELECT o.*,o.date::text AS date,t.shift_id,t.status AS trip_status
+    FROM orders o LEFT JOIN trips t ON t.id=o.trip_id WHERE o.id=$1`,[id]);
   ensure(order,'Заказ не найден',404);
   ensure(order.version===input.version,'Заказ уже изменился. Обновите список');
+  if(order.status==='failed' && action==='reschedule') return rescheduleFailed(tx,user,order,input);
   ensure(['assigned','pending'].includes(order.status)&&(!order.trip_status||order.trip_status==='planned'),'Изменение невозможно после выезда или завершения');
   if(action==='verify-address'){
     await tx.query('UPDATE orders SET address_verified=true,reason=NULL,version=version+1 WHERE id=$1',[id]);
@@ -60,13 +111,7 @@ export async function changeOrder(tx,user,id,input,action){
       eta=NULL,reason=NULL,version=version+1 WHERE id=$5`,
       [moved?input.date:order.date,moved?input.window_start:order.window_start,moved?input.window_end:order.window_end,
       moved?'pending':'cancelled',id]);
-    if(order.trip_id){
-      await tx.query('UPDATE orders SET position=position-1,version=version+1 WHERE trip_id=$1 AND position>$2',[order.trip_id,order.position]);
-      await tx.query('DELETE FROM trips WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM orders WHERE trip_id=$1)',[order.trip_id]);
-      // Keep trip numbering compact when the first planned trip loses its last stop.
-      await tx.query(`UPDATE trips t SET number=1 WHERE number=2 AND status='planned'
-        AND NOT EXISTS(SELECT 1 FROM trips earlier WHERE earlier.shift_id=t.shift_id AND earlier.number=1)`);
-    }
+    if(order.trip_id) await rebuildAfterRemoval(tx,order.shift_id,order.trip_id,config,now);
   }
   await audit(tx,user,'order.'+action,id,{version:input.version});
   return {ok:true};

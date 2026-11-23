@@ -11,7 +11,7 @@ export async function dayView(tx,user,date,config,now){
     JOIN vehicles v ON s.vehicle_id=v.id WHERE s.date=$1 AND ($2::int IS NULL OR s.driver_id=$2) ORDER BY s.id`,scope);
   const visible=!own||published;
   const trips=visible?await rows(tx,`SELECT t.*,
-    COALESCE((SELECT sum(water) FROM orders WHERE trip_id=t.id),0)::int AS planned_water,
+    COALESCE((SELECT sum(water) FROM orders WHERE trip_id=t.id AND origin='office'),0)::int AS planned_water,
     COALESCE((SELECT sum(full_delta) FROM inventory WHERE trip_id=t.id),0)::int AS water_left,
     COALESCE((SELECT sum(empty_delta) FROM inventory WHERE trip_id=t.id),0)::int AS empty_collected
     FROM trips t JOIN shifts s ON s.id=t.shift_id WHERE s.date=$1 AND ($2::int IS NULL OR s.driver_id=$2)
@@ -22,8 +22,8 @@ export async function dayView(tx,user,date,config,now){
   const customers=own?[]:await rows(tx,'SELECT * FROM customers ORDER BY name,id');
   const reports=user.role==='operator'?[]:await rows(tx,`SELECT r.*,a.name AS driver_name,v.name AS vehicle_name,s.date::text AS date,
     (SELECT count(*)::int FROM trips WHERE shift_id=s.id) AS trip_count,
-    (SELECT count(*)::int FROM orders o JOIN trips t ON t.id=o.trip_id WHERE t.shift_id=s.id AND o.status='delivered' AND o.category='retail') AS retail_count,
-    (SELECT count(*)::int FROM orders o JOIN trips t ON t.id=o.trip_id WHERE t.shift_id=s.id AND o.status='delivered' AND o.category='wholesale') AS wholesale_count
+    (SELECT count(DISTINCT CASE WHEN o.origin='on_site' THEN o.source_order_id ELSE o.id END)::int FROM orders o JOIN trips t ON t.id=o.trip_id WHERE t.shift_id=s.id AND o.status='delivered' AND o.category='retail') AS retail_count,
+    (SELECT count(DISTINCT CASE WHEN o.origin='on_site' THEN o.source_order_id ELSE o.id END)::int FROM orders o JOIN trips t ON t.id=o.trip_id WHERE t.shift_id=s.id AND o.status='delivered' AND o.category='wholesale') AS wholesale_count
     FROM settlements r JOIN shifts s ON s.id=r.shift_id JOIN accounts a ON a.id=s.driver_id JOIN vehicles v ON v.id=s.vehicle_id
     WHERE s.date=$1 AND ($2::int IS NULL OR s.driver_id=$2) ORDER BY r.id`,scope);
   return {shifts:shifts.map(s=>({...s,published})),orders,trips,reports,customers};

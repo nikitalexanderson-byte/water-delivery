@@ -39,7 +39,7 @@ function vehicleIssue(order, shift) {
 
 // Пересчитывается вся смена: вставка в первый рейс может сорвать окно во втором.
 // Фактический выезд и возвращение имеют приоритет над любым планом.
-function schedule(shift, trips, rules, map, nowMin) {
+function schedule(shift, trips, rules, map, nowMin, checkLimits = true) {
   let available = shift.start_min;
   let driving = 0;
   let previousTripExists = false;
@@ -60,7 +60,7 @@ function schedule(shift, trips, rules, map, nowMin) {
     let bottles = 0;
     const stops = [];
     for (const order of trip.stops) {
-      if (planned) {
+      if (planned && checkLimits) {
         const issue = vehicleIssue(order, shift);
         if (issue) return { issue };
       }
@@ -70,13 +70,13 @@ function schedule(shift, trips, rules, map, nowMin) {
       driving += leg;
       const eta = Math.max(time + leg, order.window_start);
       time = eta + serviceTime(order, shift, rules);
-      if (planned && time > order.window_end) {
+      if (planned && checkLimits && time > order.window_end) {
         return { issue: 'Не хватает времени на доставку внутри окна клиента' };
       }
       stops.push({ order_id: order.id, position: stops.length + 1, eta });
       previous = order;
     }
-    if (planned && bottles * BOTTLE_KG > shift.capacity_kg - shift.extra_kg) {
+    if (planned && checkLimits && bottles * BOTTLE_KG > shift.capacity_kg - shift.extra_kg) {
       return { issue: 'В рейсе недостаточно свободной грузоподъёмности' };
     }
     const returnLeg = map.travelMinutes(previous, BASE);
@@ -84,12 +84,19 @@ function schedule(shift, trips, rules, map, nowMin) {
     if (trip.status === 'active') time = Math.max(time, nowMin);
     available = time + returnLeg;
     finish = available;
-    if (planned && finish > shift.end_min) {
+    if (planned && checkLimits && finish > shift.end_min) {
       return { issue: 'Водитель не успеет вернуться на базу до конца смены' };
     }
     if (planned) timetable.push({ shift_id: shift.id, number: trip.number, stops });
   }
   return { driving, finish, timetable };
+}
+
+// Пересчёт ETA уже закреплённых точек после удаления. Текущее опоздание не
+// должно блокировать отмену или перенос. Порядок рейсов и точек поступает из БД.
+export function retimeShift({ shift, trips, settings, nowMin }) {
+  const rules = { ...demoRoutingDefaults, ...settings };
+  return schedule(shift, trips, rules, demoMapProvider(rules.legMinutes), nowMin, false).timetable;
 }
 
 function betterScore(a, b) {

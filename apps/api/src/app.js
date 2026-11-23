@@ -9,6 +9,7 @@ import {dayView,audit} from './day.js';
 import {createOrder,allocate,changeOrder} from './orders.js';
 import {confirmShift,startTrip,deliver,returnTrip,settle} from './execution.js';
 import {reportCsv} from './csv.js';
+import {failDelivery,onSiteSale} from './outcomes.js';
 import * as v from './validation.js';
 
 const office=['operator','dispatcher'];
@@ -147,13 +148,26 @@ export function createApp({db,config,clock=()=>new Date()}){
     await audit(tx,user,'vehicle.changed',id,input);return {ok:true};
   },{method:'patch'});
   action('/orders',office,v.order,(tx,u,b)=>createOrder(tx,u,b,config));
+  action('/accounts',['manager'],v.account,async(tx,u,b)=>{
+    const result=await one(tx,'INSERT INTO accounts(email,name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id',
+      [b.email,b.name,b.role,await passwordHash(b.password)]);
+    await audit(tx,u,'account.created',result.id,{role:b.role});
+    return result;
+  });
+  action('/vehicles',['dispatcher'],v.newVehicle,async(tx,u,b)=>{
+    const result=await one(tx,`INSERT INTO vehicles(name,capacity_kg,extra_kg,length_mm,body_height_mm,total_height_mm)
+      VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[b.name,b.capacity_kg,b.extra_kg,b.length_mm,b.body_height_mm,b.total_height_mm]);
+    await audit(tx,u,'vehicle.created',result.id);return result;
+  });
   for(const op of ['cancel','reschedule','verify-address']){
-    action('/orders/:id/'+op,office,op==='reschedule'?v.move:v.version,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,op));
+    action('/orders/:id/'+op,office,op==='reschedule'?v.move:v.version,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,op,config,clock()));
   }
   action('/plan',['dispatcher'],v.plan,(tx,u,b)=>allocate(tx,u,b,config,clock()));
   action('/shifts/:id/confirm',drivers,blank,(tx,u,b,r)=>confirmShift(tx,u,idOf(r),config,clock()));
   action('/trips/:id/start',drivers,v.start,(tx,u,b,r)=>startTrip(tx,u,idOf(r),b,config,clock()),{repeat:true});
   action('/orders/:id/deliver',drivers,v.complete,(tx,u,b,r)=>deliver(tx,u,idOf(r),b),{repeat:true});
+  action('/orders/:id/fail',drivers,v.failure,(tx,u,b,r)=>failDelivery(tx,u,idOf(r),b),{repeat:true});
+  action('/trips/:id/sale',drivers,v.sale,(tx,u,b,r)=>onSiteSale(tx,u,idOf(r),b,config),{repeat:true});
   action('/trips/:id/return',drivers,v.returned,(tx,u,b,r)=>returnTrip(tx,u,idOf(r),b),{repeat:true});
   action('/shifts/:id/settle',drivers,v.settlement,(tx,u,b,r)=>settle(tx,u,idOf(r),b),{repeat:true});
   action('/reports/:id/review',oversight,blank,async(tx,u,b,r)=>{

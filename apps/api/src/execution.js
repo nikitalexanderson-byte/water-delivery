@@ -50,11 +50,15 @@ export async function deliver(tx,user,id,input){
   ensure(balance.water>=order.water,'Недостаточно воды на борту');
   const rate=await one(tx,'SELECT * FROM rates WHERE category=$1 AND has_loader=$2',[order.category,order.has_loader]);
   ensure(rate,'Не настроена ставка экспедитора');
+  const visit=order.origin==='on_site'?order.source_order_id:order.id;
+  const previous=await one(tx,`SELECT 1 FROM receipts r JOIN orders o ON o.id=r.order_id
+    WHERE o.id=$1 OR (o.origin='on_site' AND o.source_order_id=$1) LIMIT 1`,[visit]);
+  const stopFee=previous?0:rate.per_stop;
   await tx.query(`INSERT INTO inventory(trip_id,order_id,kind,full_delta,empty_delta,sold_shells)
     VALUES($1,$2,'delivery',$3,$4,$5)`,[order.trip_id,id,-order.water,input.empty,order.new_shells]);
   await tx.query(`INSERT INTO receipts(order_id,amount,method,confirmed,earnings,per_stop,per_bottle)
     VALUES($1,$2,$3,$4,$5,$6,$7)`,[id,order.total,order.payment_method,input.paid,
-    rate.per_stop+rate.per_bottle*order.water,rate.per_stop,rate.per_bottle]);
+    stopFee+rate.per_bottle*order.water,stopFee,rate.per_bottle]);
   await tx.query("UPDATE orders SET status='delivered',paid=$1,version=version+1 WHERE id=$2",[input.paid,id]);
   await audit(tx,user,'order.delivered',id,input);
   return {ok:true};
@@ -76,7 +80,7 @@ export async function settle(tx,user,id,input){
   const goods=await one(tx,`SELECT sum(i.full_delta)::int AS water,sum(i.empty_delta)::int AS empty,
     sum(CASE WHEN kind='delivery' THEN -full_delta ELSE 0 END)::int AS delivered_water,
     sum(sold_shells)::int AS sold_shells FROM inventory i JOIN trips t ON t.id=i.trip_id WHERE t.shift_id=$1`,[id]);
-  const sales=await one(tx,`SELECT count(*)::int AS delivered_stops,COALESCE(sum(r.earnings),0) AS earnings,
+  const sales=await one(tx,`SELECT count(DISTINCT CASE WHEN o.origin='on_site' THEN o.source_order_id ELSE o.id END)::int AS delivered_stops,COALESCE(sum(r.earnings),0) AS earnings,
     COALESCE(sum(amount) FILTER(WHERE confirmed AND method='cash'),0) AS cash,
     COALESCE(sum(amount) FILTER(WHERE confirmed AND method='bank'),0) AS bank,
     COALESCE(sum(amount) FILTER(WHERE NOT confirmed),0) AS unpaid FROM receipts r JOIN orders o ON r.order_id=o.id

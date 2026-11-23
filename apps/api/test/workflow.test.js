@@ -102,6 +102,22 @@ test('Для действий нужны действующий токен и н
   assert.equal((await http('GET', '/day?date=' + today, 'extra')).status, 401);
 });
 
+test('Смена пароля отзывает обе сессии одного аккаунта', async () => {
+  const email = 'password-check@farvater.test';
+  await execute(`INSERT INTO accounts(email,name,role,password_hash)
+    SELECT $1,'Проверка входа','operator',password_hash FROM accounts WHERE email='operator@farvater.test'`, [email]);
+  const login = value => http('POST', '/login', null, { email, password: value });
+  const next = 'new-fixture-password-20';
+  accounts.browser = await success(login(password));
+  accounts.handset = await success(login(password));
+  assert.equal((await http('POST', '/password', 'browser', { current_password: 'invalid', new_password: next })).status, 400);
+  assert.equal((await http('GET', '/me', 'handset')).status, 200);
+  await post('browser', '/password', { current_password: password, new_password: next });
+  for (const device of ['browser','handset']) assert.equal((await http('GET', '/me', device)).status, 401);
+  assert.equal((await login(password)).status, 401);
+  assert.equal((await success(login(next))).user.email, email);
+});
+
 test('Контроль окна, тары и компании; версию заказа может изменить только один запрос', async () => {
   for (const fields of [{ window_end: 550 }, { new_shells: 4 }, { payment_method: 'bank', company: ' ' }]) {
     assert.equal((await http('POST', '/orders', 'operator', { ...details(), ...fields })).status, 400);
@@ -237,4 +253,155 @@ test('Расхождения по деньгам, воде и таре сохр�
   const bytes = Buffer.from(await csv.arrayBuffer());
   assert.equal(bytes.subarray(0, 3).toString('hex'), 'efbbbf');
   assert.ok(bytes.toString().includes(reviewed.driver_name));
+});
+
+test('Допродажа сохраняет резерв других точек, а недоставка переносится одним новым заказом', async () => {
+  const originalTime = now;
+  const workDate = calendar(config, new Date(tomorrow + 'T12:00:00+03:00')).tomorrow;
+  now = new Date(workDate + 'T12:00:00+03:00');
+  const nextDate = calendar(config, now).tomorrow;
+  try {
+    const { vehicles } = await success(http('GET', '/resources', 'dispatcher'));
+    const { id: shiftId } = await post('dispatcher', '/shifts', {
+      date: workDate, vehicle_id: vehicles[0].id, driver_id: accounts.driver1.user.id,
+      start_min: 480, end_min: 1080, has_loader: false,
+    });
+    await post('driver1', `/shifts/${shiftId}/confirm`, {});
+    const create = fields => post('operator', '/orders', { ...details(workDate), new_shells: 0, water_price: 20000, ...fields });
+    const point = await create({ name: 'Учебная точка А', water: 2 });
+    const missed = await create({ name: 'Учебная точка Б', water: 4 });
+    const plan = await post('dispatcher', '/plan', { date: workDate });
+    assert.equal(plan.assigned, 2);
+    const route = await day('driver1', workDate);
+    assert.equal(route.trips.length, 1);
+    const tripId = route.trips[0].id;
+    await post('driver1', `/trips/${tripId}/start`, { actual_start: 720, water: 8 });
+    const version = id => route.orders.find(o => o.id === id).version;
+    await post('driver1', `/orders/${point.id}/deliver`, { version: version(point.id), paid: true, empty: 2 });
+
+    const path = `/trips/${tripId}/sale`;
+    const sale = {
+      customer_order_id: point.id, water: 2, new_shells: 1, water_price: 19000,
+      payment_method: 'cash', company: '', paid: true, empty: 1,
+    };
+    assert.equal((await http('POST', path, 'driver1', { ...sale, water: 3 }, randomUUID())).status, 409);
+    assert.ok([403,404].includes((await http('POST', path, 'driver2', sale, randomUUID())).status));
+    assert.equal((await day('driver1', workDate)).trips[0].water_left, 6);
+    const saleKey = randomUUID();
+    const [sold, retry] = await Promise.all([
+      post('driver1', path, sale, saleKey), post('driver1', path, sale, saleKey),
+    ]);
+    assert.deepEqual(retry, sold);
+    assert.equal((await day('driver1', workDate)).trips[0].water_left, 4);
+
+    const failure = { version: version(missed.id), reason: 'Клиент перенёс встречу' };
+    await post('driver1', `/orders/${missed.id}/fail`, failure);
+    const failed = (await day('operator', workDate)).orders.find(o => o.id === missed.id);
+    assert.equal(failed.status, 'failed');
+    assert.equal(failed.failure_reason, failure.reason);
+    await post('driver1', `/trips/${tripId}/return`, { actual_return: 810 });
+    const report = await post('driver1', `/shifts/${shiftId}/settle`,
+      { water: 4, empty: 3, cash: 103000, bank: 0, loader_minutes: 0 });
+    assert.equal(report.matched, true);
+    assert.equal(Number(report.earnings), 45000);
+    assert.equal(report.delivered_water, 4);
+    assert.equal(report.delivered_stops, 1);
+    assert.equal(report.sold_shells, 1);
+
+    const movePath = `/orders/${missed.id}/reschedule`;
+    const move = { version: failed.version, date: nextDate, window_start: 771, window_end: 934 };
+    await post('operator', movePath, move);
+    const old = (await day('operator', workDate)).orders.find(o => o.id === missed.id);
+    assert.equal(old.status, 'failed');
+    const attempted = await http('POST', movePath, 'operator', { ...move, version: old.version }, randomUUID());
+    assert.ok([200,409].includes(attempted.status));
+    const renewed = (await day('operator', nextDate)).orders;
+    assert.equal(renewed.length, 1);
+    assert.notEqual(renewed[0].id, missed.id);
+    assert.equal(renewed[0].status, 'pending');
+    assert.equal(renewed[0].customer_id, old.customer_id);
+    assert.equal(renewed[0].water, 4);
+    assert.deepEqual([renewed[0].window_start, renewed[0].window_end], [771,934]);
+  } finally {
+    now = originalTime;
+  }
+});
+
+test('Ручное переназначение атомарно и пересчитывает ETA, как отмена и перенос', async () => {
+  const originalTime = now;
+  now = new Date(localTime('12:00').getTime() + 7 * 86400000);
+  const { today: date, tomorrow: next } = calendar(config, now);
+  try {
+    const { vehicles } = await success(http('GET', '/resources', 'dispatcher'));
+    const createShift = async (driver, index, end) => {
+      const { id } = await post('dispatcher', '/shifts', { date, driver_id: accounts[driver].user.id,
+        vehicle_id: vehicles[index].id, start_min: 600, end_min: end, has_loader: false });
+      await post(driver, `/shifts/${id}/confirm`, {});
+      return id;
+    };
+    const source = await createShift('driver2', 1, 1320);
+    const target = await createShift('driver1', 0, 1080);
+    const office = () => day('dispatcher', date);
+    const input = (order, shift_id) => ({ date, order_id: order.id, shift_id, version: order.version });
+    for (const [i, start] of [600,600,600,600,1100].entries()) {
+      const { id } = await post('operator', '/orders', {
+        ...details(date), name: 'Точка ' + i, water: 1, window_start: start, window_end: start === 1100 ? 1300 : 1060,
+      });
+      assert.equal((await post('dispatcher', '/plan', { date, order_id: id, shift_id: source })).assigned, 1);
+    }
+    const before = await office();
+    const [first, second, third, fourth, late] = [...before.orders].sort((a,b) => a.position-b.position);
+    for (const body of [input(late, target), { ...input(first, target), version: first.version - 1 },
+      { date, order_id: first.id, shift_id: target }]) {
+      const rejected = await http('POST','/plan','dispatcher',body,randomUUID());
+      assert.equal(rejected.status,409);
+      assert.ok((await rejected.json()).error);
+    }
+    assert.deepEqual((await office()).orders, before.orders);
+    assert.deepEqual((await office()).trips, before.trips);
+
+    const key = randomUUID();
+    await post('dispatcher', '/plan', input(first, target), key);
+    await post('dispatcher', '/plan', input(first, target), key);
+    const after = (await office()).orders;
+    const at = (orders, point) => orders.find(o => o.id === point.id);
+    assert.equal(at(after, first).shift_id, target);
+    assert.equal(at(after, second).position, 1);
+    assert.equal(at(after, second).eta, first.eta);
+    assert.ok(at(after, second).eta < second.eta);
+    assert.ok(at(after, second).version > second.version);
+
+    await post('operator', `/orders/${second.id}/cancel`, { version: at(after, second).version });
+    const afterCancel = (await office()).orders;
+    assert.equal(at(afterCancel, third).position, 1);
+    assert.equal(at(afterCancel, third).eta, first.eta);
+    await post('operator', `/orders/${third.id}/reschedule`, {
+      version: at(afterCancel, third).version, date: next, window_start: 700, window_end: 900,
+    });
+    const afterReschedule = (await office()).orders;
+    assert.equal(at(afterReschedule, fourth).position, 1);
+    assert.equal(at(afterReschedule, fourth).eta, first.eta);
+    assert.equal((await day('operator',next)).orders.find(o => o.id === third.id).status,'pending');
+
+    const moved = at(afterReschedule, first);
+    await post('driver1', `/trips/${moved.trip_id}/start`, { actual_start: 720, water: 1 });
+    assert.equal((await http('POST','/plan','dispatcher',input(moved, source),randomUUID())).status,409);
+    assert.equal(at((await office()).orders, first).shift_id, target);
+
+    // Заполненный второй рейс становится первым, когда от первого не остаётся точек.
+    const heavy = await post('operator','/orders',{ ...details(date), water: 160, window_end: 1320 });
+    assert.equal((await post('dispatcher','/plan',{ date,order_id:heavy.id,shift_id:source })).assigned,1);
+    const withTwo = await office();
+    const fullTripId = at(withTwo.orders,heavy).trip_id;
+    assert.equal(withTwo.trips.find(t => t.id === fullTripId).number,2);
+    for (const point of [fourth,late]) {
+      const current = at((await office()).orders,point);
+      await post('operator',`/orders/${point.id}/cancel`,{ version:current.version });
+    }
+    const compact = await office();
+    assert.deepEqual(compact.trips.filter(t => t.shift_id === source).map(t => [t.id,t.number]), [[fullTripId,1]]);
+    assert.equal(at(compact.orders,heavy).eta, first.eta);
+  } finally {
+    now = originalTime;
+  }
 });

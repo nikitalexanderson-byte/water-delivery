@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planOrders } from '../src/routing.js';
+import { planOrders, retimeShift } from '../src/routing.js';
 
 const settings = { legMinutes: 10, stopBase: 5, stopPerBottle: 0, reloadMinutes: 20 };
 const order = (id, fields = {}) => ({
@@ -127,4 +127,14 @@ test('Повторный подбор сохраняет точки и не до
   const result = run({ trips: [trip], orders: [order(1), order(2), order(2)] });
   assert.deepEqual(ids(result.trips[0]), [1, 2]);
   assert.deepEqual(result.unassigned, []);
+});
+
+test('После удаления точки прогноз показывает новое ETA даже при уже пропущенном окне', () => {
+  const trips = [
+    { number: 1, status: 'returned', actual_return: 800, stops: [] },
+    { number: 2, status: 'planned', stops: [order(5, { window_end: 790, eta: 775, position: 2 })] },
+  ];
+  assert.deepEqual(retimeShift({ shift: shift(1), trips, settings, nowMin: 810 }), [
+    { shift_id: 1, number: 2, stops: [{ order_id: 5, position: 1, eta: 830 }] },
+  ]);
 });
