@@ -69,6 +69,27 @@ test('учебные рейсы: итоги, выбор карты и списк
   expect(requestedTiles).toEqual([]);
 });
 
+test('настроенная база видна на карте и замыкает оба учебных маршрута',async({page})=>{
+  const base={base_lat:55.75,base_lon:37.6,base_address:'Учебная производственная база'};
+  await page.route('**/api/config',async route=>{
+    const response=await route.fetch();
+    await route.fulfill({response,json:{...await response.json(),...base}});
+  });
+  await signIn(page,'dispatcher','/?view=atlas&example=1');
+  const map=iframe(page);
+  await expect(map.locator('.base-icon')).toHaveCount(1);
+  await map.getByTitle(base.base_address,{exact:true}).click();
+  await expect(map.locator('.leaflet-popup')).toContainText(base.base_address);
+  for(const [index,count] of [[0,5],[1,4]]){
+    await page.getByLabel('Выбранный рейс').selectOption('demo-'+index);
+    const link=page.getByRole('link',{name:/Открыть в Яндекс Картах/});
+    const path=new URL(await link.getAttribute('href')).searchParams.get('rtext').split('~');
+    expect(path).toHaveLength(count+2);
+    expect(path[0]).toBe('55.75,37.6');
+    expect(path.at(-1)).toBe(path[0]);
+  }
+});
+
 test('рабочие точки с координатами и без них открывают нужную схему и карточку заказа',async({page,request})=>{
   const office=await auth(request,'dispatcher'),driver=await auth(request,'driver1');
   const {today}=await (await request.get('/api/config')).json();

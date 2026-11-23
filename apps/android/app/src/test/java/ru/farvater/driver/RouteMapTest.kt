@@ -1,5 +1,6 @@
 package ru.farvater.driver
 
+import org.json.JSONArray
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -52,6 +53,35 @@ class RouteMapTest {
             emptyList(),
         )
 
+    private fun stopsOf(shown: ShownTrip): JSONArray =
+        mapPayload(listOf(shown), 0, null, base, false)
+            .getJSONArray("trips").getJSONObject(0).getJSONArray("stops")
+
+    @Test
+    fun exampleUsesConfiguredBaseAndLeavesPersonalLocationUnset() {
+        val configured = MapBase.from(
+            json("base_address" to "Адрес из настроек", "base_lat" to 54.123,
+                "base_lon" to 38.456, "map_tiles_enabled" to true)
+        )
+        val stops = JSONArray().put(json("lat" to 55.111, "lon" to 37.222))
+        val routes = JSONArray().put(json("id" to "demo-1", "stops" to stops))
+        val payload = mapPayload(routes, "demo-1", null, configured, false)
+        assertEquals(configured.label, payload.getJSONObject("base").getString("label"))
+        assertEquals(54.123, payload.getJSONObject("base").getDouble("lat"), 0.0)
+        assertEquals(38.456, payload.getJSONObject("base").getDouble("lon"), 0.0)
+        assertTrue(payload.getBoolean("tilesEnabled"))
+        assertEquals("demo-1", payload.getString("activeTripId"))
+        assertTrue(payload.isNull("location"))
+        assertEquals(0, payload.getInt("locationRequest"))
+        assertEquals(
+            "54.123,38.456~55.111,37.222~54.123,38.456",
+            yandexRoutes(configured, stops).single().url.substringAfter("rtext="),
+        )
+        val incomplete = mapPayload(routes, null, null, configured.copy(lon = null), false)
+        assertTrue(incomplete.getJSONObject("base").isNull("lat"))
+        assertTrue(incomplete.getJSONObject("base").isNull("lon"))
+    }
+
     @Test
     fun onlyPublishedPointsOfSelectedTripsEnterMap() {
         assertEquals(listOf(9, 10), day.mapTrips(0).flatMap { it.points }.map { it.id })
@@ -69,10 +99,10 @@ class RouteMapTest {
         assertTrue(point.isNull("lon"))
         assertTrue(payload.getJSONObject("base").isNull("lat"))
         assertFalse(payload.getBoolean("tilesEnabled"))
-        assertTrue(yandexRoutes(base, shown).isEmpty())
+        assertTrue(yandexRoutes(base, stopsOf(shown)).isEmpty())
         assertEquals(
             "https://yandex.ru/maps/?pt=31.0,51.0&z=16",
-            yandexRoutes(MapBase(), day.mapTrips(7).single()).single().url,
+            yandexRoutes(MapBase(), stopsOf(day.mapTrips(7).single())).single().url,
         )
     }
 
@@ -82,14 +112,14 @@ class RouteMapTest {
             ShownTrip(trip, listOf(stop, stop.copy(id = 20, latitude = 52.0, longitude = 32.0)))
         assertEquals(
             "https://yandex.ru/maps/?rtt=auto&rtext=50.0,30.0~51.0,31.0~52.0,32.0~50.0,30.0",
-            yandexRoutes(base, shown).single().url,
+            yandexRoutes(base, stopsOf(shown)).single().url,
         )
     }
 
     @Test
     fun longRouteSegmentsOverlapAndRespectTenWaypoints() {
         val shown = ShownTrip(trip, (0..10).map { stop.copy(id = it, latitude = 40.0 + it) })
-        val links = yandexRoutes(MapBase(), shown)
+        val links = yandexRoutes(MapBase(), stopsOf(shown))
         assertEquals(2, links.size)
         val first = links[0].url.substringAfter("rtext=").split("~")
         val second = links[1].url.substringAfter("rtext=").split("~")

@@ -15,26 +15,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import org.json.JSONArray
 
 private val routeColors =
     listOf(Color(0xFF16766C), Color(0xFF3865BA), Color(0xFFA55423), Color(0xFF7754A9))
 
 @Composable
-internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, select: (Int) -> Unit) {
+internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: RoadRepository, select: (Int) -> Unit) {
     Heading("Маршрут", true)
     var mapped by rememberSaveable { mutableStateOf(true) }
     var example by rememberSaveable { mutableStateOf(false) }
     val dark = MaterialTheme.colorScheme.background == Dark.background
     if (example) {
-        ExampleMap(base.tiles, dark) { example = false }
+        ExampleMap(base, dark, repository) { example = false }
         return
     }
     val published = day?.trips.orEmpty().takeIf { day?.shift?.published == true }.orEmpty()
     val choices = published.map { it.id }
     var filter by rememberSaveable(choices) { mutableIntStateOf(0) }
     val shown = day?.mapTrips(filter).orEmpty()
-    val context = LocalContext.current
-    var launchError by remember { mutableStateOf("") }
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
             Modifier.fillMaxWidth().padding(4.dp),
@@ -107,7 +106,12 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, select: (Int
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    val focus = task?.id.takeIf { task?.kind == "point" }
+    val payload = mapPayload(shown, filter, focus, base, dark)
+    val roads = roadRows(payload, base, false, repository)
+    RoadTotal(roads)
     if (!mapped) {
+        RoadSummary(roads, base.label)
         if (day == null || shown.isEmpty())
             CardBlock {
                 Heading("Точек пока нет")
@@ -119,38 +123,38 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, select: (Int
             }
         else shown.forEach { TripList(it.trip, day, task, select) }
     } else {
-        val focus = task?.id.takeIf { task?.kind == "point" }
         val phones =
             shown.flatMap { t -> t.points.map { it.phone } }.filter { it.isNotBlank() }.toSet()
         LocatedMap { fix, request ->
-            val payload =
-                mapPayload(shown, filter, focus, base, dark)
-                    .put("location", fix?.json() ?: org.json.JSONObject.NULL)
-                    .put("locationRequest", request)
+            payload.put("location", fix?.json() ?: org.json.JSONObject.NULL)
+                .put("locationRequest", request)
             RouteMap(payload.toString(), base.tiles, phones)
         }
+        RoadSummary(roads, base.label)
         val trip = shown.singleOrNull()
         if (trip != null) {
-            val links = yandexRoutes(base, trip)
             CardBlock {
-                if (links.isEmpty()) Muted("Для Яндекс Карт нужны координаты всех остановок рейса.")
-                links.forEach { link ->
-                    Setting(Mark.Route, link.title) {
-                        runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(link.url))
-                                )
-                            }
-                            .onFailure {
-                                launchError = "Не удалось открыть Яндекс Карты на устройстве."
-                            }
-                    }
-                }
+                YandexActions(base, payload.getJSONArray("trips").getJSONObject(0).getJSONArray("stops"))
                 val point = trip.points.find { it.id == focus }
                 if (point != null)
                     Setting(Mark.Pin, "Следующая точка", point.address) { select(point.id) }
             }
         } else if (shown.size > 1) Muted("Выберите один рейс для маршрута в Яндекс Картах.")
-        if (launchError.isNotBlank()) Feedback(launchError, true)
     }
+}
+
+@Composable
+internal fun YandexActions(base: MapBase, stops: JSONArray) {
+    val context = LocalContext.current
+    val links = yandexRoutes(base, stops)
+    var launchError by remember(links) { mutableStateOf(false) }
+    if (links.isEmpty()) Muted("Для Яндекс Карт нужны координаты всех остановок рейса.")
+    links.forEach { link ->
+        Setting(Mark.Route, link.title) {
+            launchError = runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link.url)))
+            }.isFailure
+        }
+    }
+    if (launchError) Feedback("Не удалось открыть Яндекс Карты на устройстве.", true)
 }

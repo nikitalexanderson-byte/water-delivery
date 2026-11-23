@@ -79,8 +79,18 @@ internal fun mapPayload(
             )
         )
     }
-    val hasBase = base.lat != null && base.lon != null
     val stopId = focus?.takeIf { id -> trips.any { t -> t.points.any { it.id == id } } }
+    return mapPayload(routes, filter.takeIf { it > 0 }?.toString(), stopId?.toString(), base, dark)
+}
+
+internal fun mapPayload(
+    routes: JSONArray,
+    selection: String?,
+    focus: String?,
+    base: MapBase,
+    dark: Boolean,
+): JSONObject {
+    val hasBase = base.lat != null && base.lon != null
     return json(
         "trips" to routes,
         "base" to
@@ -89,8 +99,10 @@ internal fun mapPayload(
                 "lat" to (base.lat.takeIf { hasBase } ?: JSONObject.NULL),
                 "lon" to (base.lon.takeIf { hasBase } ?: JSONObject.NULL),
             ),
-        "activeTripId" to (filter.takeIf { it > 0 }?.toString() ?: JSONObject.NULL),
-        "focusedStopId" to (stopId?.toString() ?: JSONObject.NULL),
+        "activeTripId" to (selection ?: JSONObject.NULL),
+        "focusedStopId" to (focus ?: JSONObject.NULL),
+        "location" to JSONObject.NULL,
+        "locationRequest" to 0,
         "tilesEnabled" to base.tiles,
         "theme" to if (dark) "dark" else "light",
     )
@@ -98,23 +110,20 @@ internal fun mapPayload(
 
 internal data class YandexLink(val title: String, val url: String)
 
-internal fun yandexRoutes(base: MapBase, trip: ShownTrip): List<YandexLink> {
-    if (trip.points.isEmpty() || trip.points.any { it.latitude == null || it.longitude == null })
-        return emptyList()
+internal fun yandexRoutes(base: MapBase, stops: JSONArray): List<YandexLink> {
+    if (stops.length() == 0) return emptyList()
     val knownBase = base.lat != null && base.lon != null
     val points = buildList {
         if (knownBase) add("${base.lat},${base.lon}")
-        addAll(trip.points.map { "${it.latitude},${it.longitude}" })
+        for (i in 0 until stops.length()) {
+            val stop = stops.getJSONObject(i)
+            val lat = stop.optDouble("lat").takeIf { it in -90.0..90.0 } ?: return emptyList()
+            val lon = stop.optDouble("lon").takeIf { it in -180.0..180.0 } ?: return emptyList()
+            if (stops.length() == 1 && !knownBase)
+                return listOf(YandexLink("Точка в Яндекс Картах", "https://yandex.ru/maps/?pt=$lon,$lat&z=16"))
+            add("$lat,$lon")
+        }
         if (knownBase) add("${base.lat},${base.lon}")
-    }
-    if (points.size == 1) {
-        val p = trip.points.single()
-        return listOf(
-            YandexLink(
-                "Точка в Яндекс Картах",
-                "https://yandex.ru/maps/?pt=${p.longitude},${p.latitude}&z=16",
-            )
-        )
     }
     return (0 until points.lastIndex step 9).mapIndexed { part, start ->
         val path = points.drop(start).take(10).joinToString("~")

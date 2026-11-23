@@ -81,8 +81,8 @@ export function RouteAtlas({day,config,onOpen,demo,setDemo}){
   const active=trips.find(t=>t.id===chosen)??trips[0];
   const selected=active?.stops.find(s=>s.id===point);
   const shown=useMemo(()=>only&&active?[active]:trips,[only,active,trips]);
-  const base=useMemo(()=>({label:demo?'Учебная база':config.base_address||'Производственная база',
-    lat:demo?null:config.base_lat,lon:demo?null:config.base_lon}),[demo,config]);
+  const base=useMemo(()=>({label:config.base_address||'Производственная база',
+    lat:config.base_lat,lon:config.base_lon}),[config]);
   const payload=useMemo(()=>({trips:shown,base,activeTripId:active?.id??null,focusedStopId:selected?.id??null,
     focusRequest,location,locationRequest,theme,tilesEnabled:config.map_tiles_enabled===true}),
     [shown,base,active,selected,focusRequest,location,locationRequest,theme,config.map_tiles_enabled]);

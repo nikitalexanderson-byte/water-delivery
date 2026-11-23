@@ -10,10 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import org.json.JSONArray
-import org.json.JSONObject
 
 @Composable
-internal fun ExampleMap(tiles: Boolean, dark: Boolean, close: () -> Unit) {
+internal fun ExampleMap(base: MapBase, dark: Boolean, repository: RoadRepository, close: () -> Unit) {
     val context = LocalContext.current
     val examples =
         remember(context) {
@@ -66,21 +65,14 @@ internal fun ExampleMap(tiles: Boolean, dark: Boolean, close: () -> Unit) {
         }
     val water = points.sumOf { it.getInt("water") }
     Text(withMetrics("Маршрут · ${points.size} точ.    Груз · $water бут. / ${water*20} кг"))
-    val payload =
-        json(
-            "trips" to JSONArray(visible),
-            "base" to
-                json(
-                    "label" to "Производственная база",
-                    "lat" to JSONObject.NULL,
-                    "lon" to JSONObject.NULL,
-                ),
-            "activeTripId" to (selected.ifBlank { null } ?: JSONObject.NULL),
-            "focusedStopId" to JSONObject.NULL,
-            "location" to JSONObject.NULL,
-            "locationRequest" to 0,
-            "tilesEnabled" to tiles,
-            "theme" to if (dark) "dark" else "light",
-        )
-    RouteMap(payload.toString(), tiles, emptySet())
+    val payload = mapPayload(JSONArray(visible), selected.ifEmpty { null }, null, base, dark)
+    val roads = roadRows(payload, base, true, repository)
+    RoadTotal(roads)
+    RouteMap(payload.toString(), base.tiles, emptySet())
+    RoadSummary(roads, base.label)
+    if (visible.size == 1) {
+        CardBlock { YandexActions(base, visible.single().getJSONArray("stops")) }
+    } else {
+        Muted("Выберите один рейс для маршрута в Яндекс Картах.")
+    }
 }
