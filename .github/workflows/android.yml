@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   debug:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/android
@@ -19,8 +19,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-36.1" "build-tools;36.1.0"
+      - name: Install the project SDK with the runner's Android tools
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36.1" "build-tools;36.1.0"'
       - uses: gradle/actions/setup-gradle@v4
       - run: bash gradlew testDebugUnitTest assembleDebug
       - uses: actions/upload-artifact@v4
