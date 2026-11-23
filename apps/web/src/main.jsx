@@ -9,7 +9,7 @@ import {Resources} from './Resources';
 import {PasswordDialog} from './PasswordDialog';
 import {Catalog,ProductDialog} from './Catalog';
 import {Registration} from './Registration';
-import {Sidebar,DayToolbar,titles} from './WorkspaceShell';
+import {Sidebar,DayToolbar,MobileWorkspaceMenu,titles} from './WorkspaceShell';
 import {Customers} from './Customers';
 import {OrderCalendar} from './OrderCalendar';
 import {TeamDialog} from './Teams';
@@ -90,12 +90,21 @@ function Workspace({session,exit,theme,toggle}) {
     return ()=>window.removeEventListener('popstate',back);
   },[user.role]);
   async function logout(){
+    setDialog(null);
     try{await send('/logout',{});exit('');}catch(err){setError(err.message);}
+  }
+  function mobileNavigate(id){
+    navigate(id);setDialog(null);
+    window.scrollTo(0,0);
+    requestAnimationFrame(()=>document.getElementById('workspace')?.focus({preventScroll:true}));
   }
   const order=dialog?.id!=null&&day?.orders.find(o=>o.id===dialog.id);
   const global=tab==='catalog'||tab==='customers';
+  const mobileMenu=['sections','profile'].includes(dialog?.kind)?dialog.kind:null;
+  const changePassword=()=>setDialog({kind:'password'});
   return <div className="app-shell"><a className="skip" href="#workspace">К рабочей области</a>
-    <Sidebar user={user} tab={tab} navigate={navigate} theme={theme} toggle={toggle} password={()=>setDialog({kind:'password'})} logout={logout}/>
+    <Sidebar user={user} tab={tab} navigate={navigate} mobileNavigate={mobileNavigate} openMenu={kind=>setDialog({kind})} menu={mobileMenu}
+      theme={theme} toggle={toggle} password={changePassword} logout={logout}/>
     <div className="work-area"><DayToolbar config={config} date={date} choose={d=>{setDate(d);setMessage('');}} global={global} refresh={refresh} updatedAt={snapshot?.updatedAt}/>
     <main id="workspace" tabIndex="-1"><header className="page-head"><div><h1>{tab==='orders'&&user.role==='driver'?'Мои заказы':titles[tab]}</h1>
       {date&&!global&&<p className="sub long-date">{new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(date+'T12:00:00'))}</p>}</div>
@@ -120,6 +129,8 @@ function Workspace({session,exit,theme,toggle}) {
   {day&&tab==='report'&&<Reports key={date} reports={day.reports} date={date} send={send} download={path=>response(path,{csv:true})} refresh={refresh}/>}
   {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={canReport} edit={product=>setDialog({kind:'product',product})}/>}
   </main></div>
+  {mobileMenu&&<MobileWorkspaceMenu kind={mobileMenu} user={user} tab={tab} navigate={mobileNavigate} theme={theme}
+    toggle={toggle} password={changePassword} logout={logout} close={()=>setDialog(null)}/>}
   {dialog?.kind==='password'&&<PasswordDialog send={send} close={()=>setDialog(null)} exit={exit}/>}
   {dialog?.kind==='team'&&<TeamDialog user={user} get={get} send={send} config={config} close={()=>setDialog(null)}
     onBase={async()=>{setConfig(await get('/config'));setDialog(null);setMessage('Координаты базы сохранены.');}}/>}

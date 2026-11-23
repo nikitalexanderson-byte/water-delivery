@@ -27,6 +27,11 @@ android {
         versionName = "0.1.0"
         buildConfigField("String", "API_URL", "\"${driverApiUrl}\"")
     }
+    buildTypes {
+        debug {
+            if (providers.gradleProperty("qaApp").isPresent) applicationIdSuffix = ".qa"
+        }
+    }
     buildFeatures {
         compose = true
         buildConfig = true

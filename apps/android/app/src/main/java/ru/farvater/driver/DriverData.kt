@@ -38,7 +38,8 @@ internal data class Stop(
     val company: String, val status: String, val paid: Boolean, val onSite: Boolean, val failureReason: String,
     val items: List<OrderItem>, val altPhone: String = "", val entrance: String = "",
     val unit: String = "", val intercom: String = "", val accessInstructions: String = "", val paidEntry: Boolean = false,
-    val latitude: Double? = null, val longitude: Double? = null, val sourceOrderId: Int? = null
+    val latitude: Double? = null, val longitude: Double? = null, val sourceOrderId: Int? = null,
+    val arrived: Boolean = false, val heightLimitMm: Int = 0, val parkingMinutes: Int = 0, val hasCart: Boolean = false,
 )
 
 internal data class Trip(
@@ -97,7 +98,9 @@ internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: Lis
                     it.text("access_instructions"), it.optBoolean("paid_entry"),
                     it.optDouble("latitude").takeIf { value -> value in -90.0..90.0 },
                     it.optDouble("longitude").takeIf { value -> value in -180.0..180.0 },
-                    it.optInt("source_order_id").takeIf { id -> id > 0 })
+                    it.optInt("source_order_id").takeIf { id -> id > 0 },
+                    arrived = !it.isNull("arrived_at"), heightLimitMm = it.optInt("height_limit_mm"),
+                    parkingMinutes = it.optInt("parking_minutes"), hasCart = it.optBoolean("has_cart"))
             }.sortedBy { it.position }
             val report = data.getJSONArray("reports").optJSONObject(0)?.let {
                 Report(it.getBoolean("matched"), Counts.parse(it.getJSONObject("expected")),

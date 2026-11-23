@@ -48,14 +48,28 @@ export async function startTrip(tx,user,id,input,config,now){
   const load=await one(tx,"INSERT INTO inventory(trip_id,kind,full_delta,empty_delta) VALUES($1,'load',$2,0) RETURNING id",[id,input.water]);
   await recordItems(tx,load.id,counts,1);
   await audit(tx,user,'trip.started',id,input);
-  return {ok:true};
+  return shift.id;
 }
-export async function deliver(tx,user,id,input){
+async function assignedOrder(tx,user,id,version){
   const order=await one(tx,`SELECT o.*,t.status AS trip_status,s.has_loader FROM orders o JOIN trips t ON o.trip_id=t.id
     JOIN shifts s ON t.shift_id=s.id JOIN customers c ON c.id=o.customer_id
     WHERE o.id=$1 AND s.driver_id=$2 AND c.team_id=$3`,[id,user.id,user.team_id]);
   ensure(order,'Заказ не найден',404);
-  ensure(order.version===input.version,'Заказ уже изменился. Обновите маршрут');
+  ensure(order.version===version,'Заказ уже изменился. Обновите маршрут');
+  return order;
+}
+export async function arrive(tx,user,id,{version},now){
+  const order=await assignedOrder(tx,user,id,version);
+  ensure(order.status==='assigned'&&order.trip_status==='active','Прибытие можно отметить только в активном рейсе');
+  ensure(order.origin==='office','Прибытие отмечается в точке маршрута');
+  if(!order.arrived_at){
+    await tx.query('UPDATE orders SET arrived_at=$2,version=version+1 WHERE id=$1',[id,now]);
+    await audit(tx,user,'order.arrived',id);
+  }
+  return {ok:true};
+}
+export async function deliver(tx,user,id,input){
+  const order=await assignedOrder(tx,user,id,input.version);
   ensure(order.status==='assigned' && order.trip_status==='active','Подтвердить доставку можно только в активном рейсе');
   const balance=await stock(tx,order.trip_id);
   ensure(balance.water>=order.water,'Недостаточно воды на борту');
@@ -86,7 +100,7 @@ export async function returnTrip(tx,user,id,input){
   ensure(!await one(tx,"SELECT id FROM orders WHERE trip_id=$1 AND status='assigned' LIMIT 1",[id]),'Остались незавершённые точки');
   await tx.query("UPDATE trips SET status='returned',actual_return=$1 WHERE id=$2",[input.actual_return,id]);
   await audit(tx,user,'trip.returned',id,input);
-  return {ok:true};
+  return trip.shift_id;
 }
 export async function settle(tx,user,id,input,config){
   const shift=await ownShift(tx,user,id);

@@ -39,7 +39,7 @@ internal fun pastRouteAlarmExpired(state: String, today: String, now: Long): Boo
 
 internal fun callSchedule(day: Day, date: String, zone: String, now: Long): Map<Int, Long> {
     if (day.shift?.published != true) return emptyMap()
-    return day.stops.filter { !it.onSite && it.status == "assigned" }.associate {
+    return day.stops.filter { !it.onSite && !it.arrived && it.status == "assigned" }.associate {
         it.id to callTime(date, it.eta, zone)
     }.filterValues { it + WINDOW > now }
 }

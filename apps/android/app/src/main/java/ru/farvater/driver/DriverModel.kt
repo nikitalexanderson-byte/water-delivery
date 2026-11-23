@@ -40,7 +40,9 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         private set
     var officeSession by mutableStateOf<String?>(null)
         private set
-    var invitationRequired by mutableStateOf(false)
+    var teamSetup by mutableStateOf(false)
+        private set
+    var teamIntent by mutableStateOf<TeamIntent?>(null)
         private set
     var busy by mutableStateOf(false)
         private set
@@ -69,16 +71,10 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
 
     init {
         runCatching { store.get("session:$scope") }.getOrNull()?.let { session ->
-            if (needsTeamInvite(session.getJSONObject("user"))) {
-                store.put("session:$scope", null)
-                reminders.clear()
-                invitationRequired = true
-            } else {
-                restoreSession(session)
-                if (officeSession == null) {
-                    loadCached()
-                    refresh()
-                }
+            restoreSession(session)
+            if (signedIn && officeSession == null) {
+                loadCached()
+                refresh()
             }
         }
     }
@@ -86,11 +82,13 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     private fun restoreSession(session: JSONObject) {
         token = session.getString("token")
         val user = session.getJSONObject("user")
+        teamSetup = needsTeamInvite(user)
+        teamIntent = TeamIntent.entries.find { it.name == session.optString("team_intent") }
         account = accountScope(scope, user)
         name = user.getString("name")
         officeSession = if (isOfficeRole(user.getString("role"))) session.toString() else null
-        pending = if (officeSession == null) store.get("write:$account") else null
-        signedIn = true
+        pending = if (!teamSetup && officeSession == null) store.get("write:$account") else null
+        signedIn = !teamSetup
     }
     private fun loadCached() {
         store.get("day:$account")?.let {
@@ -114,7 +112,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
                 block()
             } catch (e: ApiError) {
                 failed = true
-                message = if (e.status == 401 && signedIn) {
+                message = if (e.status == 401 && (signedIn || teamSetup)) {
                     forgetSession()
                     "Сессия завершена. Войдите снова."
                 } else e.message.orEmpty()
@@ -140,6 +138,8 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         token = ""
         account = ""
         signedIn = false
+        teamSetup = false
+        teamIntent = null
         officeSession = null
         day = null
         pending = null
@@ -153,25 +153,37 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         offline = false
     }
     fun login(email: String, password: String) = action {
-        invitationRequired = false
-        val session = api.call("login", body = json("email" to email.trim(), "password" to password))
+        acceptSession(api.call("login", body = json("email" to email.trim(), "password" to password)))
+    }
+
+    fun register(name: String, email: String, password: String, intent: TeamIntent) = action {
+        val session = api.call("register", body = json(
+            "name" to name.trim(), "email" to email.trim(), "password" to password
+        ))
+        session.put("team_intent", intent.name)
+        acceptSession(session)
+    }
+
+    fun setUpTeam(intent: TeamIntent, value: String) = action {
+        // A retry after a lost response can recover an already-created membership.
+        val current = api.call("me", token)
+        val user = if (needsTeamInvite(current)) {
+            val field = if (intent == TeamIntent.Create) "name" else "code"
+            api.call(intent.apiPath, token, json(field to value.trim())).getJSONObject("user")
+        } else current
+        acceptSession(json("user" to user, "token" to token))
+    }
+
+    private suspend fun acceptSession(session: JSONObject) {
         val user = session.getJSONObject("user")
-        if (needsTeamInvite(user)) {
-            invitationRequired = true
-            try {
-                api.call("logout", session.getString("token"), JSONObject())
-            } catch (_: IOException) {
-                // The unused token remains solely on the server until expiry.
-            }
-            return@action
-        }
         if (user.getString("role") != "driver" && !isOfficeRole(user.getString("role"))) {
             api.call("logout", session.getString("token"), JSONObject())
             throw ApiError(403, "Для этой роли кабинет недоступен")
         }
         store.put("session:$scope", session)
+        offline = false
         restoreSession(session)
-        if (officeSession == null) {
+        if (signedIn && officeSession == null) {
             loadCached()
             update()
         }

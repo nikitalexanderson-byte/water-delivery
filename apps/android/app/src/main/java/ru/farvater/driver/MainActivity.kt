@@ -1,8 +1,6 @@
 package ru.farvater.driver
 
 import android.os.Bundle
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -24,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.*
@@ -51,12 +48,16 @@ class MainActivity : ComponentActivity() {
             }
             MaterialTheme(colorScheme = if (dark) Dark else Light) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        val office = model.officeSession
-                        when {
-                            office != null -> key(office) { OfficeWorkspace(office, model) }
-                            model.signedIn -> DriverWorkspace(model)
-                            else -> SignIn(model)
+                    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                        AppUpdateNotice(viewModel())
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            val office = model.officeSession
+                            when {
+                                office != null -> key(office) { OfficeWorkspace(office, model) }
+                                model.teamSetup -> TeamSetup(model)
+                                model.signedIn -> DriverWorkspace(model)
+                                else -> Access(model)
+                            }
                         }
                     }
                 }
@@ -66,7 +67,22 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SignIn(model: DriverModel) {
+private fun Access(model: DriverModel) {
+    var choosing by rememberSaveable { mutableStateOf(false) }
+    var intent by rememberSaveable { mutableStateOf<TeamIntent?>(null) }
+    val back = { model.dismissMessage(); choosing = false; intent = null }
+    BackHandler(choosing || intent != null) { if (!model.busy) back() }
+    when {
+        intent != null -> RegisterAccount(model, requireNotNull(intent), back)
+        choosing -> AccountEntry("Как вы будете работать?", back) {
+            TeamChoices { intent = it }
+        }
+        else -> SignIn(model) { model.dismissMessage(); choosing = true }
+    }
+}
+
+@Composable
+private fun SignIn(model: DriverModel, signUp: () -> Unit) {
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var visible by remember { mutableStateOf(false) }
@@ -134,19 +150,13 @@ private fun SignIn(model: DriverModel) {
                     }
                 },
             )
-            if (model.invitationRequired) {
-                val context = LocalContext.current
-                var unavailable by remember { mutableStateOf(false) }
-                Feedback("Примите приглашение в веб-панели, затем войдите снова.")
-                OutlinedButton(onClick = {
-                    unavailable = runCatching {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.API_URL + "/")))
-                    }.isFailure
-                }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Открыть веб-панель") }
-                if (unavailable) Muted("Откройте в браузере ${BuildConfig.API_URL}/")
-            }
             if (model.message.isNotBlank()) Feedback(model.message, model.failed)
             Action(if (model.busy) "Вход…" else "Войти", ready, click = login)
+            OutlinedButton(
+                onClick = signUp, enabled = !model.busy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) { Text("Создать аккаунт") }
+            UpdateSettings()
         }
     }
 }
@@ -319,7 +329,9 @@ private fun DriverWorkspace(model: DriverModel) {
                     if (model.message.isNotBlank() && (!model.offline || !model.failed))
                         Feedback(model.message, model.failed)
                     when {
-                        stop != null -> PointView(stop, day, next, locked, ::open)
+                        stop != null -> PointView(stop, day, next, locked, ::open) {
+                            model.write("orders/${stop.id}/arrive", json("version" to stop.version), "Прибытие отмечено.")
+                        }
                         tab == Tab.Account -> AccountView(model) { open("password", 0) }
                         tab == Tab.Shift -> ShiftView(model, day, next, locked, ::runNext)
                         tab == Tab.Route -> RouteView(day, next, model.mapBase, model.roads) { detail = it }

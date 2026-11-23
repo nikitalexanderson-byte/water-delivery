@@ -65,7 +65,8 @@ test('оператор ищет заказ с клавиатуры и возвр
   await page.keyboard.press('Escape');
   await expect(button).toBeFocused();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
-  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
+  await page.getByRole('button',{name:'Ещё',exact:true}).click();
+  await page.getByRole('dialog',{name:'Другие разделы'}).getByRole('button',{name:'Маршруты',exact:true}).click();
   await expect(page.getByRole('button',{name:'Распределить заказы'})).toHaveCount(0);
 });
 
@@ -358,12 +359,28 @@ test('оператор находит клиента по телефону и п
 test('узкий экран сохраняет доступ к разделам, смене дня и тёмной теме',async({page})=>{
   await page.setViewportSize({width:360,height:780});
   await login(page,'dispatcher');
-  await page.getByRole('button',{name:'Тёмная тема',exact:true}).click();
+  const profile=page.getByRole('button',{name:'Профиль',exact:true});
+  await profile.click();
+  const profileSheet=page.getByRole('dialog',{name:'Профиль'});
+  await expect(profileSheet.getByRole('button',{name:'Изменить пароль'})).toBeVisible();
+  await profileSheet.getByRole('button',{name:'Тёмная тема',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.keyboard.press('Escape');
+  await expect(profile).toBeFocused();
   await page.getByRole('button',{name:'Завтра',exact:true}).click();
   await expect(page.getByRole('button',{name:'Завтра',exact:true})).toHaveAttribute('aria-pressed','true');
-  for(const [section,title] of [['Маршруты','Маршруты доставки'],['Клиенты','Клиенты'],['Отчёты','Отчёт за день'],['Каталог','Каталог воды'],['Заказы','Заказы на день']]){
-    const entry=page.getByRole('navigation').getByRole('button',{name:section,exact:true});
+  const nav=page.getByRole('navigation',{name:'Основные разделы'});
+  const more=nav.getByRole('button',{name:'Ещё',exact:true});
+  for(const [section,title] of [['Клиенты','Клиенты'],['Отчёты','Отчёт за день'],['Каталог','Каталог воды']]){
+    await more.click();
+    const sheet=page.getByRole('dialog',{name:'Другие разделы'});
+    await sheet.getByRole('button',{name:section,exact:true}).click();
+    await expect(sheet).toBeHidden();
+    await expect(more).toHaveAttribute('aria-current','true');
+    await expect(page.getByRole('heading',{level:1,name:title})).toBeVisible();
+  }
+  for(const [section,title] of [['Маршруты','Маршруты доставки'],['Карта рейсов','Карта рейсов'],['Заказы','Заказы на день']]){
+    const entry=nav.getByRole('button',{name:section,exact:true});
     await entry.focus();
     await page.keyboard.press('Enter');
     await expect(entry).toHaveAttribute('aria-current','page');

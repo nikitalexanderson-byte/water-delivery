@@ -57,7 +57,11 @@ jobs:
           unset KEYSTORE_BASE64
           sdk="$ANDROID_HOME/build-tools/36.1.0"
           apk="$RUNNER_TEMP/farvater-driver.apk"
-          "$sdk/zipalign" -f -P 16 4 apps/android/app/build/outputs/apk/release/app-release-unsigned.apk "$work/aligned.apk"
+          install -d "$work/assets"
+          printf '{"version_code":%s}\n' "$ANDROID_VERSION_CODE" > "$work/assets/farvater-release.json"
+          cp apps/android/app/build/outputs/apk/release/app-release-unsigned.apk "$work/unsigned.apk"
+          (cd "$work" && zip -q -0 unsigned.apk assets/farvater-release.json)
+          "$sdk/zipalign" -f -P 16 4 "$work/unsigned.apk" "$work/aligned.apk"
           "$sdk/apksigner" sign --ks "$work/signing.keystore" --ks-key-alias farvater-staging \
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD --out "$apk" "$work/aligned.apk"
           "$sdk/zipalign" -c -P 16 4 "$apk"
@@ -97,3 +101,8 @@ jobs:
           "${fetch[@]}" "$site/health/ready" | jq -e '.ok == true' > /dev/null
           "${fetch[@]}" "$site/downloads/farvater-driver.apk" -o "$RUNNER_TEMP/served.apk"
           cmp "$RUNNER_TEMP/farvater-driver.apk" "$RUNNER_TEMP/served.apk"
+          checksum=$(sha256sum "$RUNNER_TEMP/served.apk" | cut -d' ' -f1)
+          bytes=$(wc -c < "$RUNNER_TEMP/served.apk")
+          "${fetch[@]}" "$site/api/app-release" |
+            jq -e --argjson version "$ANDROID_VERSION_CODE" --argjson bytes "$bytes" --arg hash "$checksum" \
+              '.version_code==$version and .size_bytes==$bytes and .sha256==$hash' > /dev/null

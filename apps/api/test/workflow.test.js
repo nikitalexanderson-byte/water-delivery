@@ -90,6 +90,45 @@ const deliveryAccess = {
   access_instructions:'Охрана встречает у северных ворот', paid_entry:true,parking_minutes:6,has_cart:true,
 };
 
+test('Фактический выезд и возврат пересчитывают ETA, отметка прибытия доступна только своему водителю', async()=>{
+  const saved=now;
+  try {
+    now=new Date(localTime('07:00').getTime()+16*86400000);
+    const {today:date}=calendar(config,now);
+    const {vehicles}=await success(http('GET','/resources','dispatcher'));
+    const shift=await post('dispatcher','/shifts',{date,driver_id:accounts.driver1.user.id,
+      vehicle_id:vehicles[0].id,start_min:480,end_min:1250});
+    await post('driver1','/shifts/'+shift.id+'/confirm',{});
+    for(const water of [90,80]){
+      const order=await post('operator','/orders',{...details(date),water,window_start:480,window_end:1220});
+      assert.equal((await post('dispatcher','/plan',{date,order_id:order.id,shift_id:shift.id})).assigned,1);
+    }
+    const view=()=>day('driver1',date);
+    const original=await view();
+    const [first,second]=original.trips;
+    const point=(snapshot,trip)=>snapshot.orders.find(order=>order.trip_id===trip.id);
+    const arrival='/orders/'+point(original,first).id+'/arrive';
+    assert.equal((await http('POST',arrival,'driver1',{version:point(original,first).version},randomUUID())).status,409);
+    await post('driver1','/trips/'+first.id+'/start',{actual_start:600,water:first.planned_water});
+    const departed=await view();
+    let stop=point(departed,first);
+    assert.ok(stop.eta>point(original,first).eta);
+    assert.ok(point(departed,second).eta>point(original,second).eta);
+    now=new Date(now.getTime()+210*60000);
+    const key=randomUUID();
+    assert.equal((await http('POST',arrival,'driver2',{version:stop.version},key)).status,404);
+    await post('driver1',arrival,{version:stop.version},key);
+    await post('driver1',arrival,{version:stop.version},key);
+    stop=point(await view(),first);
+    assert.equal(new Date(stop.arrived_at).toISOString(),now.toISOString());
+    await post('driver1',arrival,{version:stop.version});
+    assert.equal((await execute("SELECT count(*)::int AS total FROM audit WHERE event='order.arrived' AND entity_id=$1",[stop.id]))[0].total,1);
+    await post('driver1','/orders/'+stop.id+'/deliver',{version:stop.version,empty:0,paid:true});
+    await post('driver1','/trips/'+first.id+'/return',{actual_return:900});
+    assert.ok(point(await view(),second).eta>=935);
+  } finally { now=saved; }
+});
+
 test('Досрочная доставка действует только в день согласия и сохраняет исходную дату при неудачном назначении',async()=>{
   const initial=now;
   now=new Date(localTime('12:00').getTime()+79*86400000);

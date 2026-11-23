@@ -11,12 +11,13 @@ import {findCustomers,readCustomerHistory} from './customers.js';
 import {createPlaceSearch,PlaceSearchError} from './places.js';
 import {createRoadRouter,exampleStops,tripStops} from './road-routes.js';
 import {createOrder,allocate,changeOrder,bringForward,refreshShiftPlan} from './orders.js';
-import {confirmShift,startTrip,deliver,returnTrip,settle} from './execution.js';
+import {confirmShift,startTrip,arrive,deliver,returnTrip,settle} from './execution.js';
 import {reportCsv} from './csv.js';
 import {catalog,createProduct,editProduct} from './products.js';
 import {failDelivery,onSiteSale} from './outcomes.js';
 import {beginSession,createTeam,inviteMember,joinTeam,members,register,teamUserColumns} from './teams.js';
 import * as v from './validation.js';
+import {appRelease} from './app-release.js';
 
 const office=['operator','dispatcher','manager'];
 const oversight=['dispatcher','manager'];
@@ -36,6 +37,7 @@ const tokenDigest=req=>{
 
 export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fetch,roadFetch=fetch}){
   const app=express();
+  const getAppRelease=appRelease(settings.apkDownloadPath);
   const searchPlaces=createPlaceSearch(settings.geocoder,{fetchImpl:placeFetch});
   const roadRoute=createRoadRouter(settings.roadRouter,{fetchImpl:roadFetch});
   const config={...settings,routing:{...settings.routing,mapProvider:roadRoute.planningMap(settings,settings.routing)}};
@@ -51,6 +53,11 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   app.get('/health/ready',async(req,res)=>{
     await db.transaction(tx=>tx.query('SELECT 1 FROM migrations LIMIT 1'));
     res.json({ok:true});
+  });
+  app.get('/api/app-release',async(req,res)=>{
+    const release=await getAppRelease();
+    ensure(release,'Подписанное обновление пока недоступно.',404);
+    res.json(release);
   });
   async function sessionTeam(req){
     const session=tokenDigest(req);
@@ -274,11 +281,21 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
     if(value.loader_changed)await refreshShiftPlan(tx,id,settings,now);
     return value;
   });
-  action('/trips/:id/start',drivers,v.start,(tx,u,b,r)=>startTrip(tx,u,idOf(r),b,config,clock()),{repeat:true});
+  action('/trips/:id/start',drivers,v.start,async(tx,u,b,r)=>{
+    const settings=teamConfig(u),now=clock();
+    const shiftId=await startTrip(tx,u,idOf(r),b,settings,now);
+    await refreshShiftPlan(tx,shiftId,settings,now,false,true);
+    return {ok:true};
+  },{repeat:true});
+  action('/orders/:id/arrive',drivers,v.version,(tx,u,b,r)=>arrive(tx,u,idOf(r),b,clock()),{repeat:true});
   action('/orders/:id/deliver',drivers,v.complete,(tx,u,b,r)=>deliver(tx,u,idOf(r),b),{repeat:true});
   action('/orders/:id/fail',drivers,v.failure,(tx,u,b,r)=>failDelivery(tx,u,idOf(r),b),{repeat:true});
   action('/trips/:id/sale',drivers,v.sale,(tx,u,b,r)=>onSiteSale(tx,u,idOf(r),b,config),{repeat:true});
-  action('/trips/:id/return',drivers,v.returned,(tx,u,b,r)=>returnTrip(tx,u,idOf(r),b),{repeat:true});
+  action('/trips/:id/return',drivers,v.returned,async(tx,u,b,r)=>{
+    const shiftId=await returnTrip(tx,u,idOf(r),b);
+    await refreshShiftPlan(tx,shiftId,teamConfig(u),clock(),false);
+    return {ok:true};
+  },{repeat:true});
   action('/shifts/:id/settle',drivers,v.settlement,(tx,u,b,r)=>settle(tx,u,idOf(r),b,config),{repeat:true});
   action('/reports/:id/review',oversight,blank,async(tx,u,b,r)=>{
     const id=idOf(r);

@@ -188,7 +188,7 @@ export async function changeOrder(tx,user,id,input,action,config,now){
   }else{
     const moved=action==='reschedule';
     await tx.query(`UPDATE orders SET date=$1,window_start=$2,window_end=$3,status=$4,trip_id=NULL,position=NULL,
-      eta=NULL,reason=NULL,version=version+1 WHERE id=$5`,
+      eta=NULL,arrived_at=NULL,reason=NULL,version=version+1 WHERE id=$5`,
       [moved?input.date:order.date,moved?input.window_start:order.window_start,moved?input.window_end:order.window_end,
       moved?'pending':'cancelled',id]);
     if(order.trip_id) await rebuildAfterRemoval(tx,order.shift_id,order.trip_id,config,now,inFlight);

@@ -234,7 +234,8 @@ private fun PointRow(point: Stop, next: Boolean, select: () -> Unit) {
             }
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (next) "Следующая · ${clock(point.eta)}"
+                    if (point.arrived && point.status == "assigned") "Прибытие отмечено"
+                    else if (next) "Следующая · ${clock(point.eta)}"
                     else if (point.status == "assigned") clock(point.eta) else stopStatus(point),
                     style = MaterialTheme.typography.labelLarge,
                     color = if (next) colors.onSecondaryContainer else colors.onSurfaceVariant,
@@ -257,6 +258,7 @@ internal fun PointView(
     next: ShiftFocus?,
     locked: Boolean,
     open: (String, Int) -> Unit,
+    arrived: () -> Unit,
 ) {
     val trip = day.trips.firstOrNull { it.id == stop.tripId } ?: return
     val current = next?.kind == "point" && next.id == stop.id
@@ -275,7 +277,8 @@ internal fun PointView(
     )
     CardBlock {
         if (stop.status == "assigned") {
-            PairLine("Расчётное прибытие", clock(stop.eta))
+            if (stop.arrived) PairLine("Прибытие", "Отмечено")
+            else PairLine("Расчётное прибытие", clock(stop.eta))
             listOf("Основной телефон" to stop.phone, "Дополнительный телефон" to stop.altPhone)
                 .filter { it.second.isNotBlank() }
                 .forEach { (label, number) ->
@@ -293,9 +296,13 @@ internal fun PointView(
                 }
             if (stop.phone.isNotBlank() || stop.altPhone.isNotBlank()) DialAppSetting()
             Setting(Mark.Pin, "Открыть адрес в картах") {
-                val location = Uri.parse("geo:0,0?q=${Uri.encode(stop.address)}")
+                val point = if (stop.latitude != null && stop.longitude != null) "${stop.latitude},${stop.longitude}" else null
+                val location = Uri.parse(if (point == null) "geo:0,0?q=${Uri.encode(stop.address)}" else "geo:$point?q=$point")
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, location)) }
-                    .onFailure { error = "Приложение карт не найдено. Адрес указан выше." }
+                    .recoverCatching {
+                        val query = Uri.encode(point ?: stop.address)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://yandex.ru/maps/?text=$query")))
+                    }.onFailure { error = "Не удалось открыть карту. Адрес указан выше." }
             }
         } else
             Text(
@@ -311,6 +318,9 @@ internal fun PointView(
                 "Домофон ${stop.intercom}".takeIf { stop.intercom.isNotBlank() },
                 "КПП".takeIf { stop.checkpoint },
                 "Платный въезд".takeIf { stop.paidEntry },
+                "Высота въезда до ${stop.heightLimitMm / 1000.0} м".takeIf { stop.heightLimitMm > 0 },
+                "Парковка · ${stop.parkingMinutes} мин".takeIf { stop.parkingMinutes > 0 },
+                "Есть тележка".takeIf { stop.hasCart },
                 stop.accessInstructions.takeIf { it.isNotBlank() },
                 stop.note.takeIf { it.isNotBlank() },
             )
@@ -326,6 +336,10 @@ internal fun PointView(
         PairLine(if (stop.bank) "Безналичные" else "Наличные", money(stop.total))
     }
     if (current) {
+        if (!stop.arrived) OutlinedButton(
+            onClick = arrived, enabled = !locked,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) { Text("Прибыл") }
         OutlinedButton(
             onClick = { open("fail", stop.id) },
             enabled = !locked,
@@ -550,6 +564,7 @@ internal fun AccountView(model: DriverModel, password: () -> Unit) {
         Setting(Mark.Refresh, "Обновить данные", enabled = !model.busy) { model.refresh() }
         DialAppSetting()
         ReminderPermission(model)
+        UpdateSettings()
     }
     OutlinedButton(
         onClick = { model.logout() },

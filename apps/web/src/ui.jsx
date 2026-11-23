@@ -17,6 +17,7 @@ const symbols = {
   refresh:<><path d="M20 5v5h-5M4 19v-5h5"/><path d="M5 9a8 8 0 0 1 13-4l2 3M4 16l2 3a8 8 0 0 0 13-4"/></>,
   warn:<><path d="M12 3 2 21h20Z"/><path d="M12 9v5m0 3v.5"/></>,
   arrow:<path d="M4 12h15m-6-6 6 6-6 6"/>,
+  more:<><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>,
   key:<><circle cx="8" cy="9" r="4"/><path d="m11 12 8 8 3-3-2-2-2 1-2-2"/></>,
   catalog:<><path d="M4 4h7v7H4zm10 0h6v7h-6zM4 14h7v6H4zm10 0h6v6h-6z"/></>,
   customers:<><circle cx="9" cy="7.5" r="3.5"/><path d="M2 20v-2a7 7 0 0 1 14 0v2M16 4a3.5 3.5 0 0 1 0 7m2 2a6 6 0 0 1 4 6"/></>,

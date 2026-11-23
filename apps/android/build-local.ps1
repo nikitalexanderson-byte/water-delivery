@@ -1,6 +1,6 @@
 # Build in a clean temporary tree. Synced Windows folders can inject desktop.ini
 # into Android resource directories, where aapt treats it as an invalid resource.
-param([switch]$Usb)
+param([switch]$Usb, [switch]$Qa)
 $ErrorActionPreference = "Stop"
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $source = (Resolve-Path (Join-Path $repo "apps/android")).Path
@@ -40,14 +40,18 @@ try {
     if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath $studioJava)) { $env:JAVA_HOME = $studioJava }
     Push-Location $stage
     try {
-        & .\gradlew.bat "-ProuteMapAssetsDir=$mapStage" --max-workers=2 --console=plain testDebugUnitTest assembleDebug
+        $gradleArguments = @("-ProuteMapAssetsDir=$mapStage", "--max-workers=2", "--console=plain", "testDebugUnitTest", "assembleDebug")
+        if ($Qa) { $gradleArguments += "-PqaApp" }
+        & .\gradlew.bat @gradleArguments
         if ($LASTEXITCODE -ne 0) { throw "Android build failed" }
     } finally {
         Pop-Location
     }
     $artifacts = Join-Path $repo ".local/apk"
     $null = New-Item -ItemType Directory -Force -Path $artifacts
-    $apk = Join-Path $artifacts $(if ($Usb) { "farvater-driver-usb-debug.apk" } else { "farvater-driver-debug.apk" })
+    $usbSuffix = if ($Usb) { "-usb" } else { "" }
+    $qaSuffix = if ($Qa) { "-qa" } else { "" }
+    $apk = Join-Path $artifacts "farvater-driver$usbSuffix$qaSuffix-debug.apk"
     Copy-Item -LiteralPath (Join-Path $stage "app/build/outputs/apk/debug/app-debug.apk") -Destination $apk
     Write-Output "APK: $apk"
 } finally {

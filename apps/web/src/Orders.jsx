@@ -195,6 +195,7 @@ export function OrderDetail({ order, trip, shift, shifts, canPlan, editable, sen
     ...items.map(i=>[i.name,<span className="measure">{i.water} × {money(i.water_price)} = {money(i.water*i.water_price)}</span>]),
     ['Новая тара',<span className="measure">{o.new_shells} × {money(o.shell_price)}</span>],['Итого',<strong className="measure">{money(o.total)}</strong>],['Оплата',o.payment_method==='bank'?'Безналичный расчёт · '+o.company:'Наличные'],['Адрес проверен',o.address_verified?'Да':'Требует проверки'],['Экспедитор',shift?.driver_name],['Рейс',trip?.number],['Этаж',o.floor],['КПП',o.checkpoint?'Нужен пропуск':null],['Высота въезда',o.height_limit_mm?o.height_limit_mm/1000+' м':null],['Инструкции',o.note],['Причина в очереди',o.reason]];
   rows.push(['Источник',o.origin==='on_site'?'Продажа у клиента':null],['Причина срыва',o.failure_reason]);
+  if(o.arrived_at)rows.push(['Прибытие','Экспедитор отметил прибытие']);
   rows.push(['Дополнительный телефон',o.alt_phone],['Парковка',o.parking_minutes?o.parking_minutes+' мин':null],['Тележка',o.has_cart?'Есть':null],
     ['Согласован досрочный приезд',o.can_deliver_today?o.early_delivery_date:null],['Подъезд',o.entrance],['Квартира или офис',o.unit],
     ['Домофон и код',o.intercom],['Как войти или подъехать',o.access_instructions],['Платный въезд',o.paid_entry?'Да':null]);

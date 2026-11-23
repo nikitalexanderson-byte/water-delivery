@@ -30,7 +30,8 @@ export function configuration() {
   }
   const root=roadUrl.pathname.replace(/\/+$/,'');
   roadUrl.pathname=/\/route\/v1\/[^/]+$/.test(root)?root+'/':root+'/route/v1/driving/';
-  return { timezone, address, lat, lon, sheets:sheetsConfiguration(),registrationEnabled:enabled('REGISTRATION_ENABLED',true),
+  return { timezone, address, lat, lon, apkDownloadPath:process.env.APK_DOWNLOAD_PATH,
+    sheets:sheetsConfiguration(),registrationEnabled:enabled('REGISTRATION_ENABLED',true),
     trustProxyHops:z.coerce.number().int().min(0).max(2).parse(process.env.TRUST_PROXY_HOPS||0),
     mapTilesEnabled:enabled('MAP_TILES_ENABLED',true), price: number('DEMO_WATER_PRICE_KOP',35000),
     roadRouter:{enabled:enabled('ROAD_ROUTER_ENABLED',true),url:roadUrl.href,
