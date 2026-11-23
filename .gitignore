@@ -1,0 +1,13 @@
+desktop.ini
+node_modules/
+.env
+.env.local
+.local/
+dist/
+.gradle/
+.kotlin/
+build/
+local.properties
+*.apk
+*.log
+test-results/

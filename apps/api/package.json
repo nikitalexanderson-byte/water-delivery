@@ -1,0 +1,11 @@
+{
+  "name": "@farvater/api",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "0.3.15",
+    "express": "5.1.0",
+    "pg": "8.16.3",
+    "zod": "4.1.12"
+  }
+}
