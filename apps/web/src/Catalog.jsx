@@ -9,7 +9,7 @@ export function Catalog({products,canEdit,edit}) {
     {visible.length?<div className="table-scroll"><table><caption className="sr-only">Каталог воды в бутылях по 19 литров</caption>
       <thead><tr><th scope="col">Название</th><th scope="col">Цена за 19 л</th><th scope="col">Для заказа</th></tr></thead><tbody>
       {visible.map(p=><tr key={p.id}><td>{canEdit?<button className="link-button" onClick={()=>edit(p)} aria-label={'Изменить бренд '+p.name}>{p.name}</button>:<strong>{p.name}</strong>}</td>
-        <td className="nowrap">{money(p.water_price)}</td><td><span className={'pill '+(p.active?'good':'')}>{p.active?'Доступен':'В архиве'}</span></td></tr>)}
+        <td className="nowrap measure">{money(p.water_price)}</td><td><span className={'pill '+(p.active?'good':'')}>{p.active?'Доступен':'В архиве'}</span></td></tr>)}
       </tbody></table></div>:<Empty title={query?'Совпадений нет':'В каталоге пока нет брендов'}/>}
   </section>;
 }

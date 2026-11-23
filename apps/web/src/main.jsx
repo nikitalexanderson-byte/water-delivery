@@ -9,12 +9,22 @@ import {Resources} from './Resources';
 import {PasswordDialog} from './PasswordDialog';
 import {Catalog,ProductDialog} from './Catalog';
 import {Registration} from './Registration';
+import {Sidebar,DayToolbar,titles} from './WorkspaceShell';
+import {Customers} from './Customers';
 import './styles.css';
+import './workspace.css';
 
-const screens=[['orders','Заказы'],['routes','Маршруты'],['report','Отчёты'],['catalog','Каталог']];
-const titles={orders:'Заказы на день',routes:'Маршруты доставки',report:'Отчёт за день',catalog:'Каталог воды'};
+const RouteAtlas=React.lazy(()=>import('./RouteAtlas').then(module=>({default:module.RouteAtlas})));
+
 function loadSession() {
   try { return JSON.parse(sessionStorage.getItem('farvater.session')); } catch { return null; }
+}
+
+function workspaceLocation(role){
+  const params=new URLSearchParams(location.search);
+  const view=params.get('view');
+  const valid=Object.hasOwn(titles,view)&&!(view==='report'&&role==='operator')&&!(view==='customers'&&role==='manager');
+  return {tab:valid?view:'orders',demo:view==='atlas'&&params.get('example')==='1'};
 }
 
 function Login({onLogin,initialError}) {
@@ -42,7 +52,7 @@ function Login({onLogin,initialError}) {
 
 function Workspace({session,exit,theme,toggle}) {
   const {token,user}=session;
-  const [tab,setTab]=useState('orders');
+  const [{tab,demo},setView]=useState(()=>workspaceLocation(user.role));
   const [date,setDate]=useState('');
   const [config,setConfig]=useState(null);
   const [snapshot,setSnapshot]=useState(null);
@@ -60,7 +70,6 @@ function Workspace({session,exit,theme,toggle}) {
   const editable=['operator','dispatcher'].includes(user.role);
   const canPlan=user.role==='dispatcher';
   const canReport=canPlan||user.role==='manager';
-  const tabs=screens.filter(([id])=>id!=='report'||canReport);
   const latestDate=useRef(date);latestDate.current=date;
   useEffect(()=>{
     const controller=new AbortController();
@@ -75,8 +84,8 @@ function Workspace({session,exit,theme,toggle}) {
       if(pending||controller.signal.aborted)return;
       pending=true;
       try{
-        const data=await get('/day?date='+date,controller.signal);
-        if(!controller.signal.aborted&&latestDate.current===date){setSnapshot({date,data});setError('');}
+        const data=await get('/day?date='+date+'&include_customers=false',controller.signal);
+        if(!controller.signal.aborted&&latestDate.current===date){setSnapshot({date,data,updatedAt:new Date()});setError('');}
       }catch(err){if(!controller.signal.aborted)setError(err.message);}finally{pending=false;}
     }
     load();
@@ -86,22 +95,29 @@ function Workspace({session,exit,theme,toggle}) {
     return ()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
   },[date,version,get]);
   function saved(targetDate,note){setDialog(null);setMessage(note);setDate(targetDate);refresh();}
-  function navigate(id){setTab(id);setMessage('');setDialog(null);}
+  function navigate(id,example=false){
+    if(tab===id&&demo===example)return;
+    const url=new URL(location.href);
+    if(id==='orders')url.searchParams.delete('view');else url.searchParams.set('view',id);
+    if(example&&id==='atlas')url.searchParams.set('example','1');else url.searchParams.delete('example');
+    history.pushState(null,'',url);setView({tab:id,demo:example});setMessage('');setDialog(null);
+  }
+  useEffect(()=>{
+    const back=()=>{setView(workspaceLocation(user.role));setDialog(null);setMessage('');};
+    window.addEventListener('popstate',back);
+    return ()=>window.removeEventListener('popstate',back);
+  },[user.role]);
   async function logout(){
     try{await send('/logout',{});exit('');}catch(err){setError(err.message);}
   }
   const order=dialog?.id!=null&&day?.orders.find(o=>o.id===dialog.id);
-  return <><a className="skip" href="#workspace">К рабочей области</a><header className="top"><div className="top-inner"><Brand/><div className="top-actions">
-    <span className="identity">{user.name}</span>
-    <button className="icon-button" onClick={()=>setDialog({kind:'password'})} aria-label="Изменить пароль" title="Изменить пароль"><Icon name="key"/></button>
-    <button className="icon-button" onClick={toggle} aria-label={theme==='dark'?'Светлая тема':'Тёмная тема'} title={theme==='dark'?'Светлая тема':'Тёмная тема'}><Icon name={theme==='dark'?'sun':'moon'}/></button>
-    <button className="icon-button" onClick={logout} aria-label="Выйти" title="Выйти"><Icon name="logout"/></button>
-  </div></div></header>
-  <nav aria-label="Разделы"><div className="nav-inner">{tabs.map(([id,name])=><button key={id} className={tab===id?'active':''} aria-current={tab===id?'page':undefined} onClick={()=>navigate(id)}><Icon name={id}/>{name}</button>)}</div></nav>
-  <main id="workspace" tabIndex="-1"><header className="page-head"><div><h1>{titles[tab]}</h1>
-    {date&&tab!=='catalog'&&<p className="sub long-date">{new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(date+'T12:00:00'))}</p>}</div>
-    <div className="actions">{tab!=='catalog'&&<label><span className="sr-only">Дата рабочего дня</span><input type="date" value={date} disabled={!config} onChange={e=>{if(e.target.value){setDate(e.target.value);setMessage('');}}}/></label>}
-    <button className="icon-button" onClick={refresh} aria-label="Обновить данные" title="Обновить данные"><Icon name="refresh"/></button>
+  const global=tab==='catalog'||tab==='customers';
+  return <div className="app-shell"><a className="skip" href="#workspace">К рабочей области</a>
+    <Sidebar user={user} tab={tab} navigate={navigate} theme={theme} toggle={toggle} password={()=>setDialog({kind:'password'})} logout={logout}/>
+    <div className="work-area"><DayToolbar config={config} date={date} choose={d=>{setDate(d);setMessage('');}} global={global} refresh={refresh} updatedAt={snapshot?.updatedAt}/>
+    <main id="workspace" tabIndex="-1"><header className="page-head"><div><h1>{titles[tab]}</h1>
+      {date&&!global&&<p className="sub long-date">{new Intl.DateTimeFormat('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date(date+'T12:00:00'))}</p>}</div>
+      <div className="actions">
     {editable&&tab==='orders'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'new'})}><Icon name="plus"/>Новый заказ</button>}
     {canPlan&&tab==='routes'&&<button disabled={!day} onClick={()=>setDialog({kind:'resources'})}><Icon name="truck"/>Смены и машины</button>}
     {tab==='routes'&&canPlan&&<button disabled={!day} onClick={()=>setDialog({kind:'vehicle'})}><Icon name="plus"/>Добавить машину</button>}
@@ -111,18 +127,20 @@ function Workspace({session,exit,theme,toggle}) {
   {error&&<p className="error" role="alert">{error}{day?' Показаны последние полученные данные.':''}</p>}
   {message&&<p className="success" role="status">{message}</p>}
   {!day&&!error&&<p role="status">Загружаем данные дня…</p>}
-  {day&&tab==='orders'&&<Journal orders={day.orders} onOpen={id=>setDialog({kind:'order',id})}/>}
+  {day&&tab==='orders'&&<Journal day={day} onOpen={id=>setDialog({kind:'order',id})} onRoutes={()=>navigate('routes')}/>}
+  {day&&tab==='customers'&&editable&&<Customers get={get} onRepeat={previous=>setDialog({kind:'new',previous})}/>}
   {day&&tab==='routes'&&<Dispatch key={date} day={day} date={date} config={config} canPlan={canPlan} send={send} refresh={refresh} onOpen={id=>setDialog({kind:'order',id})}/>}
+  {day&&tab==='atlas'&&<React.Suspense fallback={<p role="status">Открываем карту рейсов…</p>}><RouteAtlas key={date+':'+demo} day={day} config={config} demo={demo} setDemo={next=>navigate('atlas',next)} onOpen={id=>setDialog({kind:'order',id})}/></React.Suspense>}
   {day&&tab==='report'&&<Reports key={date} reports={day.reports} date={date} send={send} download={path=>response(path,{csv:true})} refresh={refresh}/>}
   {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={canReport} edit={product=>setDialog({kind:'product',product})}/>}
-  </main>
+  </main></div>
   {dialog?.kind==='password'&&<PasswordDialog send={send} close={()=>setDialog(null)} exit={exit}/>}
-  {day&&dialog?.kind==='new'&&<NewOrder date={dialog.previous?config.today:date} previous={dialog.previous} customers={day.customers} products={day.products||[]} config={config} send={send} close={()=>setDialog(null)} saved={saved}/>}
+  {day&&(dialog?.kind==='new'||dialog?.kind==='edit')&&<NewOrder date={dialog.kind==='edit'?dialog.previous.date:date} editing={dialog.kind==='edit'} previous={dialog.previous} get={get} products={day.products||[]} config={config} send={send} close={()=>setDialog(null)} saved={saved}/>}
   {day&&dialog?.kind==='product'&&<ProductDialog product={dialog.product} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
   {day&&dialog?.kind==='resources'&&<Resources date={date} get={get} send={send} close={()=>setDialog(null)} refresh={saved}/>}
   {day&&['employee','vehicle'].includes(dialog?.kind)&&<Registration kind={dialog.kind} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
-  {order&&dialog?.kind==='order'&&<OrderDetail key={order.id} order={order} trip={day.trips.find(t=>t.id===order.trip_id)} shift={day.shifts.find(s=>s.id===order.shift_id)} shifts={day.shifts} canPlan={canPlan} editable={editable} send={send} close={()=>setDialog(null)} saved={saved} repeat={previous=>setDialog({kind:'new',previous})}/>}
-  </>;
+  {order&&dialog?.kind==='order'&&<OrderDetail key={order.id} order={order} trip={day.trips.find(t=>t.id===order.trip_id)} shift={day.shifts.find(s=>s.id===order.shift_id)} shifts={day.shifts} canPlan={canPlan} editable={editable} send={send} close={()=>setDialog(null)} saved={saved} repeat={previous=>setDialog({kind:'new',previous})} edit={previous=>setDialog({kind:'edit',previous})}/>}
+  </div>;
 }
 
 function App() {

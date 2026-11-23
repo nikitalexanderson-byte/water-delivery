@@ -19,19 +19,22 @@ const symbols = {
   arrow:<path d="M4 12h15m-6-6 6 6-6 6"/>,
   key:<><circle cx="8" cy="9" r="4"/><path d="m11 12 8 8 3-3-2-2-2 1-2-2"/></>,
   catalog:<><path d="M4 4h7v7H4zm10 0h6v7h-6zM4 14h7v6H4zm10 0h6v6h-6z"/></>,
+  customers:<><circle cx="9" cy="7.5" r="3.5"/><path d="M2 20v-2a7 7 0 0 1 14 0v2M16 4a3.5 3.5 0 0 1 0 7m2 2a6 6 0 0 1 4 6"/></>,
+  calendar:<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18"/></>,
+  atlas:<><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></>,
 };
 export function Icon({ name, size = 18 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{symbols[name]}</svg>;
 }
 export function Brand() {
-  return <span className="brand"><span className="mark" aria-hidden="true"><i/><i/><i/></span>ФАРВАТЕР</span>;
+  return <span className="brand"><svg aria-hidden="true" viewBox="0 0 42 42" className="brand-mark" fill="none"><path d="M3 29h8l9-18h19l-5 9H24l-7 14H3z" fill="currentColor"/><path d="m21 34 5-10h8l-5 10z" fill="#fff"/></svg>ФАРВАТЕР</span>;
 }
 
 export function Field({ label, children, wide = false }) {
   return <label className={'field' + (wide ? ' wide' : '')}><span>{label}</span>{children}</label>;
 }
 
-export function Dialog({ title, close, children }) {
+export function Dialog({ title, close, children, className }) {
   const ref = useRef(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -42,7 +45,7 @@ export function Dialog({ title, close, children }) {
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };
   }, []);
-  return <dialog ref={ref} aria-labelledby="dialog-heading" onCancel={e => { e.preventDefault(); close(); }}>
+  return <dialog ref={ref} className={className} aria-labelledby="dialog-heading" onCancel={e => { e.preventDefault(); close(); }}>
     <header className="dialog-head"><h2 id="dialog-heading">{title}</h2><button type="button" className="icon-button" onClick={close} aria-label="Закрыть окно"><Icon name="close"/></button></header>
     {children}
   </dialog>;

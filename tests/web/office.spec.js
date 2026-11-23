@@ -284,3 +284,83 @@ test('третий экипаж регистрируется, получает �
   await page.getByRole('button',{name:'Обновить данные'}).click();
   await expect(entry).toContainText('Выход подтверждён');
 });
+
+test('оператор находит клиента по телефону и правит снимок заказа после назначения',async({page,request})=>{
+  const {tomorrow}=await (await request.get('/api/config')).json();
+  async function auth(role) {
+    const response=await request.post('/api/login',{data:{email:role+'@farvater.test',password}});
+    return {Authorization:'Bearer '+(await response.json()).token};
+  }
+  const dispatcher=await auth('dispatcher');
+  const driver=await auth('driver2');
+  const day=await (await request.get('/api/day?date='+tomorrow,{headers:driver})).json();
+  expect((await request.post('/api/shifts/'+day.shifts[0].id+'/confirm',{headers:driver,data:{}})).ok()).toBeTruthy();
+  await login(page,'operator');
+  await page.getByRole('button',{name:'Завтра',exact:true}).click();
+  await page.getByRole('button',{name:'Новый заказ'}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Поиск клиента по имени или телефону').fill('70000000002');
+  await dialog.getByRole('button',{name:/Анна Смирнова/}).click();
+  await expect(dialog.getByLabel('Адрес доставки')).toHaveValue('Тестовый переулок, 4');
+  await dialog.getByLabel('Адрес проверен для тестового маршрута').check();
+  await dialog.getByLabel('За бутыль воды, ₽').fill('141.25');
+  await dialog.getByText('Этаж, въезд и инструкции',{exact:true}).click();
+  await dialog.getByLabel('Дополнительный телефон').fill('+70000000098');
+  await dialog.getByLabel('Подъезд',{exact:true}).fill('2');
+  await dialog.getByLabel('Квартира или офис').fill('12А');
+  await dialog.getByLabel('Домофон и код').fill('12#');
+  await dialog.getByLabel('Как войти или подъехать').fill('Через второй вход');
+  await dialog.getByLabel('Платный въезд').check();
+  await dialog.getByText('Координаты для карты').click();
+  await dialog.getByLabel('Широта',{exact:true}).fill('1.1');
+  await dialog.getByRole('button',{name:'Создать заказ'}).click();
+  await expect(dialog.getByRole('alert')).toContainText('широту и долготу вместе');
+  await dialog.getByLabel('Долгота',{exact:true}).fill('2.2');
+  const created=page.waitForResponse(r=>r.url().endsWith('/api/orders')&&r.request().method()==='POST');
+  await dialog.getByRole('button',{name:'Создать заказ'}).click();
+  const order=await (await created).json();
+  const assigned=await request.post('/api/plan',{headers:dispatcher,data:{date:tomorrow,order_id:order.id,shift_id:day.shifts[0].id}});
+  expect((await assigned.json()).assigned).toBe(1);
+  const open=page.getByRole('button',{name:'Открыть заказ №'+order.id,exact:true});
+  await page.getByRole('button',{name:'Обновить данные'}).click();
+  await expect(page.getByRole('row').filter({has:open})).toContainText('Назначен');
+  await open.click();
+  await dialog.getByRole('button',{name:'Редактировать заказ'}).click();
+  await expect(dialog.getByText(/вернётся в очередь/)).toBeVisible();
+  await expect(dialog.getByLabel('За бутыль воды, ₽')).toHaveValue('141.25');
+  await dialog.getByRole('button',{name:'Сохранить изменения'}).click();
+  await expect(page.getByText('Данные заказа не изменились.')).toBeVisible();
+  await open.click();
+  await dialog.getByRole('button',{name:'Редактировать заказ'}).click();
+  await dialog.getByLabel('Адрес доставки').fill('Учебная аллея, 99');
+  await dialog.getByText('Координаты для карты').click();
+  await expect(dialog.getByLabel('Широта',{exact:true})).toHaveValue('');
+  await expect(dialog.getByLabel('Долгота',{exact:true})).toHaveValue('');
+  await dialog.getByRole('button',{name:'Сохранить изменения'}).click();
+  await expect(page.getByText('Заказ изменён и снят с рейса. Распределите его заново.')).toBeVisible();
+  await expect(page.getByRole('row').filter({has:open})).toContainText('В очереди');
+  await open.click();
+  await expect(dialog).toContainText('Через второй вход');
+  await dialog.getByRole('button',{name:'Повторить заказ'}).click();
+  await expect(dialog.getByLabel('Дата доставки')).toHaveValue(tomorrow);
+  await dialog.getByText('Этаж, въезд и инструкции',{exact:true}).click();
+  await expect(dialog.getByLabel('Домофон и код')).toHaveValue('12#');
+  await expect(dialog.getByLabel('Платный въезд')).toBeChecked();
+});
+
+test('узкий экран сохраняет доступ к разделам, смене дня и тёмной теме',async({page})=>{
+  await page.setViewportSize({width:360,height:780});
+  await login(page,'dispatcher');
+  await page.getByRole('button',{name:'Тёмная тема',exact:true}).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.getByRole('button',{name:'Завтра',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Завтра',exact:true})).toHaveAttribute('aria-pressed','true');
+  for(const [section,title] of [['Маршруты','Маршруты доставки'],['Клиенты','Клиенты'],['Отчёты','Отчёт за день'],['Каталог','Каталог воды'],['Заказы','Заказы на день']]){
+    const entry=page.getByRole('navigation').getByRole('button',{name:section,exact:true});
+    await entry.focus();
+    await page.keyboard.press('Enter');
+    await expect(entry).toHaveAttribute('aria-current','page');
+    await expect(page.getByRole('heading',{level:1,name:title})).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  }
+});

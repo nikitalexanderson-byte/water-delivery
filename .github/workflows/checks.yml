@@ -50,6 +50,10 @@ jobs:
           const base='http://127.0.0.1:'+process.env.API_PORT;
           const web=await fetch(base);
           if(!web.ok || !(await web.text()).includes('ФАРВАТЕР')) throw Error('web panel');
+          const map=await fetch(base+'/route-map/index.html');
+          if(!map.ok || !(await map.text()).includes('id="canvas"')) throw Error('map shell');
+          const example=await (await fetch(base+'/route-map/example.json')).json();
+          if(example.flatMap(trip=>trip.stops).length!==9) throw Error('map assets');
           const login=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({email:'dispatcher@farvater.test',password:process.env.DEMO_PASSWORD})});
           if(!login.ok) throw Error('login '+login.status);

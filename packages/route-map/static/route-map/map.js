@@ -186,6 +186,9 @@
     for(const key of actionKeys)$(key).setAttribute('aria-pressed',String(key===desired));
     const recreated=!map||mode!==desired||prev?.theme!==next.theme||prev?.tilesEnabled!==next.tilesEnabled;
     if(recreated)mount(desired);
+    // The caption can wrap on a phone and changes the height available to Leaflet.
+    caption();
+    map.invalidateSize({pan:false});
     const key=JSON.stringify([data.trips,data.base,mode]);
     const geometryChanged=recreated||key!==sceneKey;
     const redraw=geometryChanged||prev?.activeTripId!==next.activeTripId||force;
@@ -207,7 +210,7 @@
       if(marker){map.panTo(marker.getLatLng(),{animate:false});marker.openPopup();}
     }
     if(locate)centreLocation();
-    focusKey=focus;caption();
+    focusKey=focus;
   }
   for(const key of actionKeys)$(key).onclick=()=>{chosenMode=key;render(data,true);};
   $('fit').onclick=()=>{map?.closePopup();fit();};

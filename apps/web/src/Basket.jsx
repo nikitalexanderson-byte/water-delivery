@@ -31,8 +31,8 @@ export function Basket({lines,setLines,products}) {
         {active.filter(p=>p.id===line.product_id||!chosen.has(p.id)).map(p=><option value={p.id} key={p.id}>{p.name}</option>)}
       </select></Field>
       <Field label="Бутыли 19 л, шт."><input type="number" value={line.water} onChange={e=>change(line.key,{water:e.target.value})} required min="1" max="10000" step="1"/></Field>
-      <Field label="За бутыль воды, ₽"><input type="number" value={line.price} onChange={e=>change(line.key,{price:e.target.value})} required min="0.01" max="100000" step="0.01"/></Field>
-      <div className="basket-subtotal wide"><span>За позицию <strong>{money(Number(line.water)*Math.round(Number(line.price)*100))}</strong></span>
+      <Field label="За бутыль воды, ₽"><input type="number" value={line.price} onChange={e=>change(line.key,{price:e.target.value})} required min="0" max="100000" step="0.01"/></Field>
+      <div className="basket-subtotal wide"><span>За позицию <strong className="measure">{money(Number(line.water)*Math.round(Number(line.price)*100))}</strong></span>
         {lines.length>1&&<button type="button" className="link-button" onClick={()=>setLines(old=>old.filter(x=>x.key!==line.key))} aria-label={'Убрать позицию '+(i+1)}>Убрать</button>}</div>
     </div>;
   })}</div>{!active.length&&<p className="notice">В каталоге нет доступных брендов. Обратитесь к диспетчеру.</p>}
