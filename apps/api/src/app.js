@@ -20,7 +20,6 @@ import * as v from './validation.js';
 import {appRelease} from './app-release.js';
 import {currentLocations,updateLocation} from './tracking.js';
 import {addBase,chooseBase,teamBases,trainingDepot} from './bases.js';
-import {installDirectorBootstrap} from './director-bootstrap.js';
 
 const office=['operator','manager'];
 const administrators=['manager'];
@@ -61,7 +60,6 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
     await db.transaction(tx=>tx.query('SELECT 1 FROM migrations LIMIT 1'));
     res.json({ok:true});
   });
-  installDirectorBootstrap(app,db,process.env.DIRECTOR_DEMO_SITE);
   app.get('/api/app-release',async(req,res)=>{
     const release=await getAppRelease();
     ensure(release,'Подписанное обновление пока недоступно.',404);
