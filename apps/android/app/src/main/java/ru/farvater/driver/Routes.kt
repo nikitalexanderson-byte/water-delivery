@@ -141,10 +141,12 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
         val trip = shown.singleOrNull()
         if (trip != null) {
             CardBlock {
-                YandexActions(trip.trip.base ?: base, payload.getJSONArray("trips").getJSONObject(0).getJSONArray("stops"))
                 val point = trip.points.find { it.id == focus }
-                if (point != null)
+                if (point != null) {
+                    if (!point.arrived) NavigateTo(point.address, point.latitude, point.longitude)
                     Setting(Mark.Pin, "Следующая точка", point.address) { select(point.id) }
+                }
+                YandexActions(trip.trip.base ?: base, payload.getJSONArray("trips").getJSONObject(0).getJSONArray("stops"))
             }
         } else if (shown.size > 1) Muted("Выберите один рейс для маршрута в Яндекс Картах.")
     }

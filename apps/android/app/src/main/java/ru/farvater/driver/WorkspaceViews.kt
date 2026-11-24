@@ -1,7 +1,5 @@
 package ru.farvater.driver
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -140,6 +138,11 @@ internal fun ShiftView(
             }
         }
     }
+    if (point != null && !point.arrived) CardBlock { NavigateTo(point.address, point.latitude, point.longitude) }
+    if (task.kind == "return" && trip != null) {
+        val depot = trip.base ?: model.mapBase
+        if (depot.lat != null && depot.lon != null) CardBlock { NavigateTo(depot.label, depot.lat, depot.lon) }
+    }
     if (shift != null) {
         if (trip?.status == "active")
             NewSaleAction(day, trip, locked) { run(ShiftFocus("new_sale", trip.id)) }
@@ -264,7 +267,7 @@ internal fun PointView(
     val trip = day.trips.firstOrNull { it.id == stop.tripId } ?: return
     val current = next?.kind == "point" && next.id == stop.id
     val context = LocalContext.current
-    var error by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable(stop.id) { mutableStateOf("") }
     if (current)
         Text(
             "СЛЕДУЮЩАЯ ТОЧКА",
@@ -280,6 +283,7 @@ internal fun PointView(
         if (stop.status == "assigned") {
             if (stop.arrived) PairLine("Прибытие", "Отмечено")
             else PairLine("Расчётное прибытие", clock(stop.eta))
+            NavigateTo(stop.address, stop.latitude, stop.longitude)
             listOf("Основной телефон" to stop.phone, "Дополнительный телефон" to stop.altPhone)
                 .filter { it.second.isNotBlank() }
                 .forEach { (label, number) ->
@@ -296,15 +300,6 @@ internal fun PointView(
                     }
                 }
             if (stop.phone.isNotBlank() || stop.altPhone.isNotBlank()) DialAppSetting()
-            Setting(Mark.Pin, "Открыть адрес в картах") {
-                val point = if (stop.latitude != null && stop.longitude != null) "${stop.latitude},${stop.longitude}" else null
-                val location = Uri.parse(if (point == null) "geo:0,0?q=${Uri.encode(stop.address)}" else "geo:$point?q=$point")
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, location)) }
-                    .recoverCatching {
-                        val query = Uri.encode(point ?: stop.address)
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://yandex.ru/maps/?text=$query")))
-                    }.onFailure { error = "Не удалось открыть карту. Адрес указан выше." }
-            }
         } else
             Text(
                 if (stop.status == "failed") "Доставка не состоялась · ${stop.failureReason}"
@@ -572,6 +567,7 @@ internal fun AccountView(model: DriverModel, password: () -> Unit) {
         }
         TextButton(onClick = model::previewSound, enabled = model.soundsEnabled) { Text("Прослушать сигнал") }
     }
+    BackgroundLocationSetting(model.trackingAccount, model.activeTrackingTrip)
     CardBlock {
         Heading("Связь")
         PairLine("Данные смены", if (model.offline) "Последняя копия" else "С сервера")

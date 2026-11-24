@@ -41,6 +41,7 @@ internal class TripTrackingService : Service() {
     private var upload: Job? = null
     private var stopJob: Job? = null
     private var token = ""
+    private var account = ""
     private var tripId = 0
     private var lastFix: TrackingFix? = null
     private val manager by lazy { getSystemService(LocationManager::class.java) }
@@ -50,14 +51,21 @@ internal class TripTrackingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP) {
+            if (account.isNotEmpty()) trackingPreferences(this).edit().putBoolean(account, false).apply()
             stopSharing()
+            return START_NOT_STICKY
         } else if (upload == null && stopJob == null) {
             tripId = intent?.getIntExtra("trip", 0) ?: 0
             val session = runCatching { SecureStore(this).get("session:${BuildConfig.API_URL}") }.getOrNull()
             token = session?.optString("token").orEmpty()
-            if (tripId > 0 && token.isNotEmpty() && positionAllowed(this)) startSharing() else stopSelf()
+            val user = session?.optJSONObject("user")
+            account = if (user?.optString("role") == "driver") accountScope(BuildConfig.API_URL, user) else ""
+            val automatic = intent?.getBooleanExtra("automatic", false) == true
+            if (tripId > 0 && token.isNotEmpty() && account.isNotEmpty() && positionAllowed(this) &&
+                (!automatic || trackingPreferences(this).getBoolean(account, false))) startSharing()
+            else stopSelf()
         }
-        return START_NOT_STICKY
+        return if (upload != null && stopJob == null) START_REDELIVER_INTENT else START_NOT_STICKY
     }
 
     @SuppressLint("MissingPermission")
@@ -162,8 +170,9 @@ internal class TripTrackingService : Service() {
         val state = shared.asStateFlow()
         private fun publish(value: TrackingState) { shared.value = value }
 
-        fun start(context: Context, trip: Int) {
-            context.startForegroundService(Intent(context, TripTrackingService::class.java).putExtra("trip", trip))
+        fun start(context: Context, trip: Int, automatic: Boolean = false) {
+            context.startForegroundService(Intent(context, TripTrackingService::class.java)
+                .putExtra("trip", trip).putExtra("automatic", automatic))
         }
 
         fun stop(context: Context) {

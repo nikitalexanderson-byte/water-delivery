@@ -182,6 +182,7 @@ private fun DriverWorkspace(model: DriverModel) {
     val locked = model.busy || model.offline || model.pending != null
     val stop = day?.stops?.find { it.id == detail }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    AutomaticTripTracking(model.trackingAccount, model.activeTrackingTrip)
     LaunchedEffect(lifecycle, form, model.date) {
         if (form.isEmpty())
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -314,7 +315,14 @@ private fun DriverWorkspace(model: DriverModel) {
                     CardBlock {
                         Heading("Операция ожидает ответа")
                         Muted("Повторим сохранённую запись с тем же номером операции.")
-                        Action("Проверить и повторить", true, Mark.Refresh, click = model::retry)
+                        Action("Проверить и повторить", true, Mark.Refresh) {
+                            model.retry { path ->
+                                if (path.endsWith("/deliver") || path.endsWith("/fail")) {
+                                    tab = Tab.Shift
+                                    detail = 0
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -347,6 +355,7 @@ private fun DriverWorkspace(model: DriverModel) {
     val dismiss = { if (!model.busy) form = "" }
     val saved = {
         if (form == "settle") tab = Tab.Stock
+        if (form == "deliver" || form == "fail") tab = Tab.Shift
         form = ""
         detail = 0
     }

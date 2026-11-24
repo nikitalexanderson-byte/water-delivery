@@ -52,6 +52,9 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     private var token = ""
     val roads = RoadRepository { path -> api.call(path, token, readTimeoutMs = 35_000) }
     private var account = ""
+    val trackingAccount get() = account
+    var activeTrackingTrip by mutableStateOf<Int?>(null)
+        private set
     var name by mutableStateOf("")
         private set
     var signedIn by mutableStateOf(false)
@@ -150,6 +153,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     }
     private fun forgetSession() {
         TripTrackingService.end(context)
+        activeTrackingTrip = null
         roads.clear()
         reminders.clear()
         store.put("session:$scope", null)
@@ -244,6 +248,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         date = selected
         val data = api.call("day?date=$selected", token)
         val updatedDay = Day.parse(data)
+        if (selected == today) activeTrackingTrip = updatedDay.trips.firstOrNull { it.status == "active" }?.id
         TripTrackingService.state.value.tripId?.let { tracked ->
             if (selected == today && updatedDay.trips.none { it.id == tracked && it.status == "active" }) {
                 TripTrackingService.end(context, tracked)
@@ -276,7 +281,12 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         send(command)
         saved()
     }
-    fun retry() = action { pending?.let { send(it) } }
+    fun retry(saved: (String) -> Unit) = action {
+        pending?.let { command ->
+            send(command)
+            saved(command.getString("path"))
+        }
+    }
 
     private suspend fun send(command: JSONObject) {
         val path = command.getString("path")
@@ -293,7 +303,10 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         store.put("write:$account", null)
         pending = null
         message = command.getString("label")
-        if (path.endsWith("/return")) path.split('/').getOrNull(1)?.toIntOrNull()?.let { TripTrackingService.end(context, it) }
+        if (path.endsWith("/return")) path.split('/').getOrNull(1)?.toIntOrNull()?.let {
+            if (activeTrackingTrip == it) activeTrackingTrip = null
+            TripTrackingService.end(context, it)
+        }
         if (soundsEnabled) sounds.play(operationCue(path, response))
         try {
             update(command.getString("date"), announceChanges = false)

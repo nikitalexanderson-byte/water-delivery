@@ -5,6 +5,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RouteMapTest {
+    @Test
+    fun directionsUseOnlyTheDestinationAndRejectInvalidCoordinates() {
+        val point = yandexDirections(55.439039, 37.524452)!!
+        assertEquals("https://yandex.ru/maps/?rtt=auto&rtext=~55.439039,37.524452", point.maps)
+        assertEquals("yandexnavi://build_route_on_map?lat_to=55.439039&lon_to=37.524452", point.navigator)
+        assertEquals(null, yandexDirections(null, 37.524452))
+        assertEquals(null, yandexDirections(91.0, 37.524452))
+    }
     private val base = MapBase("Тестовая база", 50.0, 30.0)
     private val trip = Trip(7, 1, "active", 2, 2, 0, 480, emptyList())
     private val shift = Shift(1, "Тест", "Тест", 2600, 480, 1080, false, "active", true)
