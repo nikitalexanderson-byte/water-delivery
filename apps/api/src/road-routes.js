@@ -21,14 +21,15 @@ export function exampleStops(id){
 }
 
 export async function tripStops(tx,user,id,config,now){
-  const shift=await one(tx,`SELECT s.driver_id,s.date::text AS date FROM trips t JOIN shifts s ON s.id=t.shift_id
+  const shift=await one(tx,`SELECT s.driver_id,s.date::text AS date,t.base_address,t.base_lat,t.base_lon FROM trips t JOIN shifts s ON s.id=t.shift_id
     JOIN accounts a ON a.id=s.driver_id WHERE t.id=$1 AND ($2::int IS NULL OR s.driver_id=$2)
       AND a.team_id=$3`,[id,user.role==='driver'?user.id:null,user.team_id]);
   ensure(shift,'Рейс не найден',404);
   ensure(user.role!=='driver'||routePublished(shift.date,config,now),'Рейс ещё не опубликован',403);
-  return rows(tx,`SELECT o.id::text AS id,o.latitude AS lat,o.longitude AS lon FROM orders o
+  const stops=await rows(tx,`SELECT o.id::text AS id,o.latitude AS lat,o.longitude AS lon FROM orders o
     JOIN customers c ON c.id=o.customer_id WHERE o.trip_id=$1 AND o.origin='office' AND o.status<>'cancelled'
       AND c.team_id=$2 ORDER BY o.position,o.id`,[id,user.team_id]);
+  return {stops,base:shift.base_address===null?null:{address:shift.base_address,lat:shift.base_lat,lon:shift.base_lon}};
 }
 
 class RouteFailure extends Error {}

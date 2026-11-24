@@ -19,6 +19,7 @@ internal fun accountScope(server: String, user: JSONObject): String {
 }
 
 internal class DriverModel(app: Application) : AndroidViewModel(app) {
+    private val context = app.applicationContext
     private val api = DriverApi()
     private val store = SecureStore(app)
     private val reminders = CallReminders(app)
@@ -148,6 +149,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         }
     }
     private fun forgetSession() {
+        TripTrackingService.end(context)
         roads.clear()
         reminders.clear()
         store.put("session:$scope", null)
@@ -242,6 +244,11 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         date = selected
         val data = api.call("day?date=$selected", token)
         val updatedDay = Day.parse(data)
+        TripTrackingService.state.value.tripId?.let { tracked ->
+            if (selected == today && updatedDay.trips.none { it.id == tracked && it.status == "active" }) {
+                TripTrackingService.end(context, tracked)
+            }
+        }
         val oldDay = day
         if (announceChanges && oldDay != null && updatedDay.shift?.published == true &&
             oldDay.stops != updatedDay.stops) {
@@ -286,6 +293,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         store.put("write:$account", null)
         pending = null
         message = command.getString("label")
+        if (path.endsWith("/return")) path.split('/').getOrNull(1)?.toIntOrNull()?.let { TripTrackingService.end(context, it) }
         if (soundsEnabled) sounds.play(operationCue(path, response))
         try {
             update(command.getString("date"), announceChanges = false)

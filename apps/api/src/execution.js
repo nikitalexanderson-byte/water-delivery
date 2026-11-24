@@ -99,6 +99,7 @@ export async function returnTrip(tx,user,id,input){
   ensure(input.actual_return>=trip.actual_start,'Время возврата раньше выезда');
   ensure(!await one(tx,"SELECT id FROM orders WHERE trip_id=$1 AND status='assigned' LIMIT 1",[id]),'Остались незавершённые точки');
   await tx.query("UPDATE trips SET status='returned',actual_return=$1 WHERE id=$2",[input.actual_return,id]);
+  await tx.query('DELETE FROM trip_locations WHERE trip_id=$1',[id]);
   await audit(tx,user,'trip.returned',id,input);
   return trip.shift_id;
 }

@@ -55,7 +55,10 @@ test('учебные рейсы: итоги, выбор карты и списк
   const yandex=new URL(await list.getByRole('link',{name:/Яндекс Картах/}).getAttribute('href'));
   expect(yandex.host).toBe('yandex.ru');
   expect(yandex.searchParams.get('rtt')).toBe('auto');
-  expect(yandex.searchParams.get('rtext').split('~')).toHaveLength(4);
+  const path=yandex.searchParams.get('rtext').split('~');
+  expect(path).toHaveLength(6);
+  expect(path[0]).toBe('55.439039,37.524452');
+  expect(path.at(-1)).toBe(path[0]);
   await map.getByRole('button',{name:'Схема',exact:true}).click();
   await expect(map.locator('#caption')).toContainText(/без масштаба/i);
   await page.getByRole('button',{name:'Показать все рейсы'}).click();
@@ -233,6 +236,23 @@ test('отказ в геолокации оставляет карту и воз
   await expect(page.locator('.atlas-location')).toContainText('Доступ к геолокации закрыт');
   await expect(locate).toBeEnabled();
   await expect(iframe(page).locator('.stop-icon')).toHaveCount(9);
+});
+
+test('карта оператора показывает направление активного рейса и скрывает его в учебном режиме',async({page})=>{
+  await page.route('**/api/day?*',route=>route.fulfill({json:{shifts:[{id:34,driver_name:'Учебный экспедитор'}],
+    trips:[{id:57,shift_id:34,number:1,status:'active'}],
+    orders:[{id:101,trip_id:57,position:1,origin:'office',status:'assigned',name:'Тест',address:'Учебный адрес',water:2,latitude:55.74,longitude:37.64}],
+    reports:[],products:[]}}));
+  const location={trip_id:57,lat:55.741,lon:37.641,accuracy:8,bearing:79,stale:false,
+    driver_name:'Учебный экспедитор',observed_at:new Date().toISOString()};
+  await page.route('**/api/trips/locations?*',route=>route.fulfill({json:{locations:[location]}}));
+  await signIn(page,'operator','/?view=atlas');
+  await expect(page.locator('.atlas-live')).toContainText('Учебный экспедитор · В эфире');
+  const map=iframe(page);
+  await expect(map.locator('.tracking-pin .tracking-arrow')).toHaveAttribute('style','transform: rotate(79deg);');
+  await page.getByRole('button',{name:'Учебный пример'}).click();
+  await expect(map.locator('.stop-icon')).toHaveCount(9);
+  await expect(map.locator('.tracking-pin')).toHaveCount(0);
 });
 
 test('на телефоне история клиента повторяется на выбранную дату с исходными позициями',async({page,request})=>{

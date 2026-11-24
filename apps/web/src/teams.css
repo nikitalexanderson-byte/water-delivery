@@ -5,7 +5,8 @@
 .public-atlas h1{margin-bottom:10px}
 .team-dialog p{margin:0}
 .team-views{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
-.team-views button{flex:1 1 140px;min-height:44px;text-align:center}
+.team-views button{flex:1 1 0;min-width:0;min-height:44px;text-align:center;text-wrap:balance;padding-inline:7px}
+.team-base-settings { display:grid; gap:8px; }
 .team-views button[aria-pressed=true]{background:var(--green-bg);color:var(--green);border-color:var(--green)}
 .team-activity{list-style:none;margin:0;padding:0}
 .team-activity li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;padding:10px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}

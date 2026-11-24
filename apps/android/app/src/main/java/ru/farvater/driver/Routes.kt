@@ -1,7 +1,10 @@
 package ru.farvater.driver
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +37,7 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
     val choices = published.map { it.id }
     var filter by rememberSaveable(choices) { mutableIntStateOf(0) }
     val shown = day?.mapTrips(filter).orEmpty()
+    val sharing by TripTrackingService.state.collectAsState()
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
             Modifier.fillMaxWidth().padding(4.dp),
@@ -70,6 +74,7 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
             Text("Учебный маршрут")
         }
     }
+    published.firstOrNull { it.status == "active" }?.let { TrackingPanel(it.id, sharing) }
     if (published.size > 1)
         Row(
             Modifier.horizontalScroll(rememberScrollState()),
@@ -126,6 +131,8 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
         val phones =
             shown.flatMap { t -> t.points.map { it.phone } }.filter { it.isNotBlank() }.toSet()
         LocatedMap { fix, request ->
+            val tracked = sharing.fix?.takeIf { shown.any { route -> route.trip.id == sharing.tripId } }
+            payload.put("tracked", JSONArray().apply { if (tracked != null) put(tracked.mapJson().put("driver_name", "Я на рейсе")) })
             payload.put("location", fix?.json() ?: org.json.JSONObject.NULL)
                 .put("locationRequest", request)
             RouteMap(payload.toString(), base.tiles, phones)
@@ -134,12 +141,39 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
         val trip = shown.singleOrNull()
         if (trip != null) {
             CardBlock {
-                YandexActions(base, payload.getJSONArray("trips").getJSONObject(0).getJSONArray("stops"))
+                YandexActions(trip.trip.base ?: base, payload.getJSONArray("trips").getJSONObject(0).getJSONArray("stops"))
                 val point = trip.points.find { it.id == focus }
                 if (point != null)
                     Setting(Mark.Pin, "Следующая точка", point.address) { select(point.id) }
             }
         } else if (shown.size > 1) Muted("Выберите один рейс для маршрута в Яндекс Картах.")
+    }
+}
+
+@Composable
+private fun TrackingPanel(tripId: Int, sharing: TrackingState) {
+    val context = LocalContext.current
+    var error by rememberSaveable(tripId) { mutableStateOf("") }
+    fun start() {
+        error = if (runCatching { TripTrackingService.start(context, tripId) }.isSuccess) ""
+            else "Не удалось включить передачу. Откройте приложение и повторите."
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (positionAllowed(context)) start() else error = "Разрешите приложению доступ к местоположению."
+    }
+    val enabled = sharing.tripId == tripId
+    CardBlock {
+        Heading("Геопозиция на рейсе")
+        Muted(sharing.note ?: "Оператор и администратор увидят вашу геопозицию до возврата или отключения передачи. Android покажет уведомление.")
+        if (error.isNotEmpty()) Feedback(error, true)
+        if (enabled) {
+            OutlinedButton(onClick = { TripTrackingService.stop(context) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Text("Остановить передачу")
+            }
+        } else Action("Передавать геопозицию") {
+            if (positionAllowed(context)) start()
+            else permission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+        }
     }
 }
 

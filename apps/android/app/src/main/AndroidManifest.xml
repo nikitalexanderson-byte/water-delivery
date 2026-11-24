@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <queries>
         <intent>
             <action android:name="android.intent.action.DIAL" />
@@ -12,6 +14,7 @@
     <application android:label="ФАРВАТЕР" android:allowBackup="false" android:icon="@drawable/ic_farvater"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <receiver android:name=".CallReceiver" android:exported="false" />
+        <service android:name=".TripTrackingService" android:foregroundServiceType="location" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

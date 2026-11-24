@@ -18,6 +18,8 @@ import {failDelivery,onSiteSale} from './outcomes.js';
 import {beginSession,inviteMember,joinTeam,members,register,staffActivity,teamUserColumns} from './teams.js';
 import * as v from './validation.js';
 import {appRelease} from './app-release.js';
+import {currentLocations,updateLocation} from './tracking.js';
+import {addBase,chooseBase,teamBases,trainingDepot} from './bases.js';
 
 const office=['operator','manager'];
 const administrators=['manager'];
@@ -29,6 +31,10 @@ const denied='Недостаточно прав для этого действи
 const noTeamPaths=new Set(['/me','/logout','/password','/teams/join']);
 const registration=z.object({email:z.email().max(254).transform(v=>v.toLowerCase()),
   name:z.string().trim().min(1).max(120),password:z.string().min(10).max(128),role:v.staffRole,code:v.invitationCode});
+const locationSample=z.object({lat:z.number().min(-90).max(90),lon:z.number().min(-180).max(180),
+  accuracy:z.number().min(0).max(10000),bearing:z.number().min(0).lt(360).nullable(),observed_at:z.iso.datetime()});
+const baseInput=z.object({address:z.string().trim().max(300),lat:z.number().min(-90).max(90).nullable(),
+  lon:z.number().min(-180).max(180).nullable()}).refine(p=>(p.lat===null)===(p.lon===null),'Укажите широту и долготу вместе.');
 
 const tokenDigest=req=>{
   const token=req.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
@@ -68,12 +74,14 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   app.get('/api/config',async(req,res)=>{
     const {today,tomorrow}=calendar(config,clock());
     const depot=teamConfig(await sessionTeam(req));
+    const training=trainingDepot(depot);
     res.json({today,tomorrow,timezone:config.timezone,base_address:depot.address,base_lat:depot.lat,
-      base_lon:depot.lon,water_price:config.price,shell_price:config.shellPrice,map_provider:'demo',map_tiles_enabled:config.mapTilesEnabled??false,
+      base_lon:depot.lon,example_base_address:training.address,example_base_lat:training.lat,example_base_lon:training.lon,
+      water_price:config.price,shell_price:config.shellPrice,map_provider:'demo',map_tiles_enabled:config.mapTilesEnabled??false,
       geocoder_enabled:config.geocoder.enabled,registration_enabled:config.registrationEnabled});
   });
   app.get('/api/road-routes/example/:id',async(req,res)=>{
-    res.json(await roadRoute(exampleStops(req.params.id),teamConfig(await sessionTeam(req))));
+    res.json(await roadRoute(exampleStops(req.params.id),trainingDepot(teamConfig(await sessionTeam(req)))));
   });
 
   const attempts=new Map();
@@ -139,7 +147,8 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
           const prior=await one(tx,'SELECT signature,result FROM requests WHERE actor=$1 AND key=$2',[req.user.id,key]);
           if(prior){ ensure(prior.signature===signature,'Ключ запроса уже использован для других данных');return prior.result; }
         }
-        const result=await handler(tx,req.user,input,req);
+        const base=req.user.team_id===null?null:await one(tx,'SELECT base_address,base_lat,base_lon FROM teams WHERE id=$1',[req.user.team_id]);
+        const result=await handler(tx,{...req.user,...base},input,req);
         if(key) await tx.query('INSERT INTO requests VALUES($1,$2,$3,$4)',[req.user.id,key,signature,JSON.stringify(result)]);
         return result;
       });
@@ -157,20 +166,36 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   });
   action('/teams/join',null,z.object({code:v.invitationCode}),joinTeam);
   action('/team/invitations',administrators,z.object({role:v.staffRole}),inviteMember);
-  action('/team/base',administrators,z.object({address:z.string().trim().max(300),
-    lat:z.number().min(-90).max(90).nullable(),lon:z.number().min(-180).max(180).nullable()})
-    .refine(p=>(p.lat===null)===(p.lon===null),'Укажите широту и долготу вместе.'),async(tx,user,b)=>{
-      await tx.query('UPDATE teams SET base_address=$2,base_lat=$3,base_lon=$4 WHERE id=$1',[user.team_id,b.address,b.lat,b.lon]);
-      await audit(tx,user,'team.base_changed',user.team_id);
-      return {ok:true};
+  app.get('/api/team/bases',async(req,res)=>{
+    ensure(administrators.includes(req.user.role),denied,403);
+    res.json(await db.transaction(tx=>teamBases(tx,req.user.team_id)));
+  });
+  action('/team/bases',administrators,baseInput.refine(b=>b.address&&b.lat!==null,'Укажите адрес и координаты базы.'),addBase);
+  action('/team/bases/active',administrators,z.object({id:v.id}),(tx,user,b)=>chooseBase(tx,user,b.id,teamConfig(user)));
+  action('/team/base',administrators,baseInput,async(tx,user,b)=>{
+      const base=await addBase(tx,user,b);
+      return chooseBase(tx,user,base.id,teamConfig(user));
     },{method:'patch'});
   app.get('/api/road-routes/trip/:id',async(req,res)=>{
     const id=idOf(req);
-    const stops=await db.transaction(async tx=>{
+    const {stops,base}=await db.transaction(async tx=>{
       await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
       return tripStops(tx,req.user,id,config,clock());
     });
-    res.json(await roadRoute(stops,teamConfig(req.user)));
+    res.json(await roadRoute(stops,base??teamConfig(req.user)));
+  });
+  app.get('/api/trips/locations',async(req,res)=>{
+    const date=v.date.parse(req.query.date);
+    res.json({locations:await db.transaction(tx=>currentLocations(tx,req.user,date,clock()))});
+  });
+  app.post('/api/trips/:id/location',async(req,res)=>{
+    ensure(drivers.includes(req.user.role),denied,403);
+    const input=req.body?.stop===true?null:locationSample.parse(req.body);
+    const result=await db.transaction(async tx=>{
+      ensure(await one(tx,'SELECT 1 FROM sessions WHERE digest=$1 AND expires_at>now() FOR SHARE',[req.session]),'Сессия завершена',401);
+      return updateLocation(tx,req.user,idOf(req),input,clock());
+    });
+    res.json(result);
   });
   function teamConfig(user){
     if(user?.team_id===1&&!user.base_address&&user.base_lat==null)return config;

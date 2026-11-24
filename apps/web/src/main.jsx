@@ -128,7 +128,7 @@ function Workspace({session,exit,theme,toggle}) {
   {day&&tab==='orders'&&<Journal day={day} onOpen={id=>setDialog({kind:'order',id})} onRoutes={()=>navigate(user.role==='driver'?'atlas':'routes')}/>}
   {day&&tab==='customers'&&editable&&<Customers get={get} onRepeat={previous=>setDialog({kind:'new',previous})}/>}
   {day&&tab==='routes'&&<Dispatch key={date} day={day} date={date} config={config} canPlan={canPlan} send={send} refresh={refresh} onOpen={id=>setDialog({kind:'order',id})}/>}
-  {day&&tab==='atlas'&&<React.Suspense fallback={<p role="status">Открываем карту рейсов…</p>}><RouteAtlas key={date+':'+demo} day={day} config={config} get={get} demo={demo} setDemo={next=>navigate('atlas',next)} onOpen={id=>setDialog({kind:'order',id})}/></React.Suspense>}
+  {day&&tab==='atlas'&&<React.Suspense fallback={<p role="status">Открываем карту рейсов…</p>}><RouteAtlas key={date+':'+demo} day={day} date={date} config={config} get={get} demo={demo} setDemo={next=>navigate('atlas',next)} onOpen={id=>setDialog({kind:'order',id})}/></React.Suspense>}
   {day&&tab==='report'&&<Reports key={date} reports={day.reports} date={date} send={send} download={path=>response(path,{csv:true})} refresh={refresh}/>}
   {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={administrator} edit={product=>setDialog({kind:'product',product})}/>}
   </main></div>
@@ -136,7 +136,7 @@ function Workspace({session,exit,theme,toggle}) {
     toggle={toggle} password={changePassword} logout={logout} close={()=>setDialog(null)}/>}
   {dialog?.kind==='password'&&<PasswordDialog send={send} close={()=>setDialog(null)} exit={exit}/>}
   {dialog?.kind==='team'&&<TeamDialog user={user} get={get} send={send} config={config} close={()=>setDialog(null)}
-    onBase={async()=>{setConfig(await get('/config'));setDialog(null);setMessage('Координаты базы сохранены.');}}/>}
+    onBase={async()=>{setConfig(await get('/config'));refresh();}}/>}
   {dialog?.kind==='calendar'&&<OrderCalendar get={get} date={date} today={config.today} close={()=>setDialog(null)}
     choose={chosen=>{setDialog(null);setDate(chosen);setMessage('');}}
     open={order=>{setDate(order.date);setDialog({kind:'order',id:order.id});setMessage('');}}/>}

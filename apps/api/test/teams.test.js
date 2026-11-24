@@ -70,9 +70,14 @@ test('три роли, одноразовые приглашения и изол
   assert.deepEqual(teamA.members.map(x=>x.name),['alpha','driver','operator']);
   assert.deepEqual(teamB.members.map(x=>x.name),['beta','legacy']);
   await ok('/team/base',{method:'PATCH',token:a.token,body:{address:'Подъезд к складу Альфа',lat:55.71,lon:37.6}});
+  const otherBase=await post('/team/bases',a.token,{address:'Вторая площадка',lat:55.42,lon:37.25});
+  assert.equal((await ok('/team/bases',{token:a.token})).bases.length,2);
+  assert.deepEqual((await ok('/team/bases',{token:b.token})).bases,[]);
+  assert.equal((await request('/team/bases/active',{method:'POST',token:b.token,body:otherBase})).status,404);
   assert.equal((await ok('/config',{token:a.token})).base_lat,55.71);
   assert.equal((await ok('/config',{token:b.token})).base_lat,null);
   assert.equal((await ok('/config')).base_lat,null);
+  assert.equal((await ok('/config')).example_base_lat,55.439039);
   const {today}=await ok('/config');
   const product=await post('/products',a.token,{name:'Вода 19 л',water_price:35000});
   await post('/products',b.token,{name:'Вода 19 л',water_price:36000});
@@ -96,7 +101,26 @@ test('три роли, одноразовые приглашения и изол
   assert.equal(result.loader_changed,true);
   assert.equal((await post('/plan',operator.token,{date:today})).assigned,1);
   const trip=(await ok('/day?date='+today,{token:driver.token})).trips[0];
+  const fix={lat:55.5,lon:37.5,accuracy:9,bearing:81,observed_at:new Date(date+'T07:00:00+03:00').toISOString()};
+  const position='/trips/'+trip.id+'/location', positions='/trips/locations?date='+today;
+  assert.equal((await request(position,{method:'POST',token:driver.token,body:fix})).status,409);
   await post('/trips/'+trip.id+'/start',driver.token,{actual_start:480,water:2});
+  assert.equal((await request('/team/bases/active',{method:'POST',token:a.token,body:otherBase})).status,409);
+  assert.equal((await request(position,{method:'POST',token:operator.token,body:fix})).status,403);
+  assert.equal((await request(position,{method:'POST',token:legacy.token,body:fix})).status,404);
+  await post(position,driver.token,fix);
+  await post(position,driver.token,{...fix,lat:55.6,observed_at:new Date(Date.parse(fix.observed_at)-1000).toISOString()});
+  for(const token of [a.token,operator.token,driver.token]){
+    const {locations}=await ok(positions,{token});
+    assert.equal(locations.length,1);
+    assert.equal(locations[0].bearing,81);
+    assert.equal(locations[0].lat,55.5);
+    assert.equal(locations[0].stale,false);
+  }
+  assert.deepEqual((await ok(positions,{token:b.token})).locations,[]);
+  await post(position,driver.token,{stop:true});
+  assert.deepEqual((await ok(positions,{token:a.token})).locations,[]);
+  await post(position,driver.token,fix);
   const before=(await ok('/day?date='+today,{token:a.token})).orders[0];
   assert.equal(before.status,'assigned');
   await post('/orders/'+order.id+'/cancel',operator.token,{version:before.version});
@@ -111,6 +135,10 @@ test('три роли, одноразовые приглашения и изол
   ]);
   assert.deepEqual((await ok('/team/activity',{token:b.token})).activity,[]);
   await post('/trips/'+trip.id+'/return',driver.token,{actual_return:600});
+  assert.deepEqual((await ok(positions,{token:a.token})).locations,[]);
+  await post('/team/bases/active',a.token,otherBase);
+  assert.equal((await ok('/config',{token:a.token})).base_lat,55.42);
+  assert.equal((await ok('/day?date='+today,{token:a.token})).trips[0].base_lat,55.71);
   const report=await post('/shifts/'+shift.id+'/settle',driver.token,{water:0,empty:2,cash:70000,bank:0,loader_minutes:60});
   assert.equal(report.matched,true);
   assert.equal(report.delivered_stops,1);

@@ -55,12 +55,36 @@ function liveRoutes(day){
   return day.trips.map((trip,index)=>{
     const crew=shifts.get(trip.shift_id);
     return {id:String(trip.id),label:'Рейс '+trip.number+' · '+(crew?.driver_name||'Смена '+trip.shift_id),
-      crew:crew?.vehicle_name||'',capacity:crew?.capacity_kg,colorIndex:index%palette.length,
+      crew:crew?.vehicle_name||'',capacity:crew?.capacity_kg,status:trip.status,colorIndex:index%palette.length,
+      base:trip.base_address==null?undefined:{label:trip.base_address,lat:trip.base_lat,lon:trip.base_lon},
       stops:(stops.get(trip.id)??[]).sort((a,b)=>a.position-b.position)};
   });
 }
 
-export function RouteAtlas({day,config,get,onOpen,demo,setDemo}){
+function useLivePositions(get,date){
+  const [status,setStatus]=useState({locations:[],unavailable:false});
+  useEffect(()=>{
+    if(!date)return;
+    const controller=new AbortController();
+    let timer;
+    async function load(){
+      if(document.visibilityState==='visible'){
+        try{
+          const {locations}=await get('/trips/locations?date='+date,controller.signal);
+          if(!controller.signal.aborted)setStatus({locations,unavailable:false});
+        }catch{
+          if(!controller.signal.aborted)setStatus({locations:[],unavailable:true});
+        }
+      }
+      if(!controller.signal.aborted)timer=setTimeout(load,8000);
+    }
+    load();
+    return ()=>{controller.abort();clearTimeout(timer);};
+  },[get,date]);
+  return status;
+}
+
+export function RouteAtlas({day,date,config,get,onOpen,demo,setDemo}){
   const [chosen,setChosen]=useState(null);
   const [point,setPoint]=useState(null);
   const [focusRequest,setFocusRequest]=useState(0);
@@ -82,15 +106,20 @@ export function RouteAtlas({day,config,get,onOpen,demo,setDemo}){
   const active=trips.find(t=>t.id===chosen)??trips[0];
   const selected=active?.stops.find(s=>s.id===point);
   const shown=useMemo(()=>only&&active?[active]:trips,[only,active,trips]);
-  const base=useMemo(()=>({label:config.base_address||'Производственная база',
-    lat:config.base_lat,lon:config.base_lon}),[config]);
+  const tracking=useLivePositions(get,demo?null:date);
+  const tracked=useMemo(()=>demo?[]:tracking.locations.filter(p=>shown.some(trip=>trip.id===String(p.trip_id))),[demo,tracking.locations,shown]);
+  const base=useMemo(()=>{
+    const operational={label:config.base_address||'Производственная база',lat:config.base_lat,lon:config.base_lon};
+    if(demo&&!validPoint(operational))return {label:config.example_base_address,lat:config.example_base_lat,lon:config.example_base_lon};
+    return operational;
+  },[config,demo]);
   const {roads,retry}=useRoadRoutes({get,visible:shown,active,base,demo});
   const road=roads[active?.id];
   const incoming=new Map((road?.legs??[]).map(leg=>[String(leg.to_id),leg]));
   const positions=new Map(active?.stops.map(stop=>[stop.id,stop.position]));
   const payload=useMemo(()=>({trips:shown,roads,base,activeTripId:active?.id??null,focusedStopId:selected?.id??null,
-    focusRequest,location,locationRequest,theme,tilesEnabled:config.map_tiles_enabled===true}),
-    [shown,roads,base,active,selected,focusRequest,location,locationRequest,theme,config.map_tiles_enabled]);
+    focusRequest,location,tracked,locationRequest,theme,tilesEnabled:config.map_tiles_enabled===true}),
+    [shown,roads,base,active,selected,focusRequest,location,tracked,locationRequest,theme,config.map_tiles_enabled]);
   const choosePoint=useCallback((trip,id)=>{
     if(!trips.find(t=>t.id===trip)?.stops.some(s=>s.id===id))return;
     setChosen(trip);setPoint(id);setFocusRequest(n=>n+1);
@@ -115,7 +144,7 @@ export function RouteAtlas({day,config,get,onOpen,demo,setDemo}){
   const stops=shown.flatMap(t=>t.stops);
   const water=stops.reduce((total,s)=>total+s.water,0);
   const tripWater=active?.stops.reduce((sum,s)=>sum+s.water,0)??0;
-  const links=active?routeLinks(active,base):[];
+  const links=active?routeLinks(active,active.base??base):[];
   return <section className="atlas" aria-label="План рейсов на карте">
     <header className="atlas-summary">
       <div className="atlas-stats">{[['Рейсов',shown.length],['Точек',stops.length],['Вода',number.format(water)+' бут.'],['Вес воды',number.format(water*20)+' кг']].map(([label,value],i)=>
@@ -126,6 +155,12 @@ export function RouteAtlas({day,config,get,onOpen,demo,setDemo}){
       </div>
     </header>
     {demo&&<p className="atlas-note" role="status">Учебный пример · девять районов Москвы. Для работы с заказами вернитесь к рабочим рейсам.</p>}
+      {!demo&&shown.some(t=>t.status==='active')&&<div className="atlas-live">
+        <strong>Геопозиции на рейсах</strong>
+        {tracking.unavailable?<p className="sub">Связь с сервером прервана. Обновление повторится автоматически.</p>:tracked.length?
+          <ul>{tracked.map(p=><li key={p.trip_id}>{p.driver_name} · {p.stale?'Последняя отметка':'В эфире'} в {locationTime.format(new Date(p.observed_at))}</li>)}</ul>:
+          <p className="sub">Ожидаем геопозицию от экспедиторов.</p>}
+      </div>}
       {active&&<div className="atlas-control">
         <label>Выбранный рейс<select value={active.id} onChange={e=>{setChosen(e.target.value);setPoint(null);}}>
           {trips.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></label>

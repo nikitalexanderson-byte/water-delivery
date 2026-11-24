@@ -46,10 +46,11 @@ async function routeTrips(tx,trips,orders){
     stops:orders.filter(o=>o.trip_id===trip.id && o.origin==='office')}));
 }
 
-async function persistPlans(tx,existing,plans){
+async function persistPlans(tx,existing,plans,config){
   for(const trip of plans){
     let entity=existing.find(t=>t.shift_id===trip.shift_id && t.number===trip.number);
-    if(!entity) entity=await one(tx,'INSERT INTO trips(shift_id,number) VALUES($1,$2) RETURNING id',[trip.shift_id,trip.number]);
+    if(!entity) entity=await one(tx,'INSERT INTO trips(shift_id,number,base_address,base_lat,base_lon) VALUES($1,$2,$3,$4,$5) RETURNING id',
+      [trip.shift_id,trip.number,config.address,config.lat,config.lon]);
     for(const stop of trip.stops){
       await tx.query(`UPDATE orders SET status='assigned',trip_id=$1,position=$2,eta=$3,version=version+1,reason=NULL
         WHERE id=$4 AND status IN ('pending','assigned') AND
@@ -79,7 +80,7 @@ export async function refreshShiftPlan(tx,shiftId,config,now,checkLimits=true,re
   const result=shiftSchedule({shift,trips:await routeTrips(tx,trips,orders),settings:config.routing,
     nowMin:shift.date===today?minute:0,checkLimits,refreshActive});
   ensure(!result.issue,'Изменение экипажа нарушает план смены. '+result.issue);
-  await persistPlans(tx,trips,result.timetable);
+  await persistPlans(tx,trips,result.timetable,config);
 }
 
 export async function allocate(tx,user,input,config,now){
@@ -112,7 +113,7 @@ export async function allocate(tx,user,input,config,now){
   if(source && result.unassigned.length){
     ensure(false,'Переназначение невозможно. '+result.unassigned[0].reason);
   }
-  await persistPlans(tx,trips,result.trips);
+  await persistPlans(tx,trips,result.trips,config);
   if(source){
     await rebuildAfterRemoval(tx,source.shift_id,source.id,config,now);
     await audit(tx,user,'order.reassigned',input.order_id,{from_shift:source.shift_id,to_shift:input.shift_id,version:input.version});

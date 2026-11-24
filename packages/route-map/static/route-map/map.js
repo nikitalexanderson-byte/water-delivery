@@ -17,7 +17,8 @@
     if(data.picker && hasPoint(data.picked)){
       map.setView([data.picked.lat,data.picked.lon],16,{animate:false});
     }else if(currentBounds.length||roadBounds.length){
-      map.fitBounds(L.latLngBounds([...currentBounds,...roadBounds]),{padding:[36,32],maxZoom:mode==='geo'?16:2,animate:false});
+      const tracked=mode==='geo'?(data.tracked??[]).filter(hasPoint).map(p=>[p.lat,p.lon]):[];
+      map.fitBounds(L.latLngBounds([...currentBounds,...roadBounds,...tracked]),{padding:[36,32],maxZoom:mode==='geo'?16:2,animate:false});
     }else if(mode==='geo'){
       if(hasPoint(data.location))centreLocation();
       else map.fitBounds(overviewBounds,{padding:[8,8],animate:false});
@@ -32,7 +33,18 @@
   }
   function drawLocation(){
     positionLayers.clearLayers();
-    if(mode!=='geo'||!hasPoint(data.location))return;
+    if(mode!=='geo')return;
+    for(const point of data.tracked??[]){
+      if(!hasPoint(point))continue;
+      const title=(point.driver_name||'Геопозиция экспедитора')+(point.stale?' · последняя отметка':'');
+      const bearing=Number.isFinite(point.bearing)&&point.bearing>=0&&point.bearing<360;
+      const marker=txt('span','',bearing?'tracking-arrow':'tracking-dot');
+      if(bearing)marker.style.transform=`rotate(${point.bearing}deg)`;
+      L.marker([point.lat,point.lon],{title,alt:title,zIndexOffset:240,icon:L.divIcon({
+        className:'tracking-pin'+(point.stale?' stale':''),iconSize:[28,28],iconAnchor:[14,14],html:marker})})
+        .bindTooltip(()=>txt('span',title)).addTo(positionLayers);
+    }
+    if(!hasPoint(data.location))return;
     const {lat,lon,accuracy}=data.location, point=[lat,lon];
     if(Number.isFinite(accuracy)&&accuracy>0){
       L.circle(point,{radius:accuracy,interactive:false,color:'#146dc6',weight:1,fillOpacity:.11}).addTo(positionLayers);
@@ -104,8 +116,7 @@
     });
     pins.set(String(stop.id),marker);
   }
-  function showBase(point){
-    const label=data.base?.label||'Производственная база';
+  function showBase(point,label='Производственная база'){
     L.marker(point,{title:label,alt:label,zIndexOffset:100,icon:L.divIcon({className:'base-icon',iconSize:[42,29],
       iconAnchor:[21,15],html:txt('span','База')})}).bindPopup(()=>txt('strong',label)).addTo(layers);
     currentBounds.push(point);
@@ -135,7 +146,15 @@
         line(segment,color,emphasis);
       }
     }
-    if(base && (trips.length||mode==='geo'))showBase(base);
+    if(mode==='scheme'){
+      if(trips.length)showBase(base,data.base?.label||undefined);
+    }else{
+      const depots=new Map();
+      for(const depot of trips.length?trips.map(trip=>trip.base??data.base):[data.base]){
+        if(hasPoint(depot))depots.set(`${depot.lat},${depot.lon}`,depot);
+      }
+      for(const depot of depots.values())showBase([depot.lat,depot.lon],depot.label||undefined);
+    }
   }
   function backdrop(){
     if(mode!=='geo')return;
@@ -230,7 +249,7 @@
     if(geometryChanged||force){followExtent=true;fit();}
     else if(roadsChanged&&followExtent&&!focus)fit();
     if(recreated)backdrop();
-    if(recreated||locate||prev?.location!==next.location)drawLocation();
+    if(recreated||locate||prev?.location!==next.location||prev?.tracked!==next.tracked)drawLocation();
     if(recreated||prev?.picked!==next.picked)drawPicked();
     if(data.picker&&hasPoint(data.picked)&&next.pickRequest!==prev?.pickRequest){
       map.setView([data.picked.lat,data.picked.lon],17,{animate:false});

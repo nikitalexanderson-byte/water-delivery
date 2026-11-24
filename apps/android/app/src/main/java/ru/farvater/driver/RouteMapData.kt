@@ -76,6 +76,9 @@ internal fun mapPayload(
                 "label" to "Рейс ${shown.trip.number}",
                 "colorIndex" to (shown.trip.number - 1).coerceAtLeast(0),
                 "stops" to points,
+                "base" to (shown.trip.base?.let {
+                    json("label" to it.label, "lat" to (it.lat ?: JSONObject.NULL), "lon" to (it.lon ?: JSONObject.NULL))
+                } ?: JSONObject.NULL),
             )
         )
     }

@@ -44,7 +44,7 @@ internal data class Stop(
 
 internal data class Trip(
     val id: Int, val number: Int, val status: String, val plannedWater: Int,
-    val waterLeft: Int, val collected: Int, val startedAt: Int?, val stock: List<StockItem>
+    val waterLeft: Int, val collected: Int, val startedAt: Int?, val stock: List<StockItem>, val base: MapBase? = null
 )
 
 internal data class Shift(
@@ -81,7 +81,7 @@ internal data class Day(val shift: Shift?, val trips: List<Trip>, val stops: Lis
                     if (it.isNull("actual_start")) null else it.getInt("actual_start"),
                     it.optJSONArray("stock_items")?.mapObjects { row ->
                         StockItem(row.getInt("product_id"), row.getString("name"), row.getInt("planned_water"), row.getInt("water_left"))
-                    }.orEmpty())
+                    }.orEmpty(), if (it.isNull("base_address")) null else MapBase.from(it))
             }.sortedBy { it.number }
             val stops = data.getJSONArray("orders").mapObjects {
                 val onSite = it.text("origin") == "on_site"

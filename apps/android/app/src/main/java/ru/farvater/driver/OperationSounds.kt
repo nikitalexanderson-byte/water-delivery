@@ -8,14 +8,18 @@ import org.json.JSONObject
 
 internal enum class OperationCue(val resource: Int) {
     Acknowledged(R.raw.operation_ack),
+    RouteStarted(R.raw.route_started),
+    RouteFinished(R.raw.route_finished),
     Completed(R.raw.operation_done),
     Attention(R.raw.operation_attention),
 }
 
 internal fun operationCue(path: String, response: JSONObject): OperationCue =
     when (path.substringAfterLast('/')) {
+        "start" -> OperationCue.RouteStarted
+        "return" -> OperationCue.RouteFinished
         "settle" -> if (response.optBoolean("matched")) OperationCue.Completed else OperationCue.Attention
-        "deliver", "sale", "return" -> OperationCue.Completed
+        "deliver", "sale" -> OperationCue.Completed
         "fail" -> OperationCue.Attention
         else -> OperationCue.Acknowledged
     }

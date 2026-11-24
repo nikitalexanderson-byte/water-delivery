@@ -213,11 +213,12 @@ test('Дорожный путь рабочего рейса доступен о�
     const demo='/road-routes/example/demo-0';
     const publicExample=await success(http('GET',demo));
     assert.equal(publicExample.status,'ready');
-    assert.equal(publicExample.has_base,false);
+    assert.equal(publicExample.has_base,true);
     assert.equal((await http('GET','/road-routes/example/unknown','operator')).status,404);
     const example=await success(http('GET',demo,'driver2'));
-    assert.equal(example.status,'ready');assert.equal(example.has_base,false);
-    assert.equal(example.legs[0].from_id,'demo-0-0');
+    assert.equal(example.status,'ready');assert.equal(example.has_base,true);
+    assert.equal(example.legs[0].from_id,'base');
+    assert.equal(example.legs.at(-1).to_id,'base');
     const {vehicles}=await success(http('GET','/resources','dispatcher'));
     const {id:shift_id}=await post('dispatcher','/shifts',{date,vehicle_id:vehicles[0].id,driver_id:accounts.driver1.user.id,
       start_min:600,end_min:1200,has_loader:false});
