@@ -83,7 +83,7 @@ internal fun OfficeWorkspace(session: String, model: DriverModel) {
                 { date ->
                     if (reportDate == null) {
                         reportDate = date
-                        save.launch("ФАРВАТЕР-$date.csv")
+                        save.launch("WaySlate-$date.csv")
                     }
                 }, { link ->
                     val opened = if (link.scheme == "tel") openDialApp(ctx, link.schemeSpecificPart)

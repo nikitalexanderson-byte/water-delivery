@@ -66,6 +66,9 @@ jobs:
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD --out "$apk" "$work/aligned.apk"
           "$sdk/zipalign" -c -P 16 4 "$apk"
           "$sdk/apksigner" verify --verbose --print-certs "$apk"
+          python3 apps/android/tools/verify_direct.py \
+            --apkanalyzer "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" \
+            --apk "$apk" --version-code "$ANDROID_VERSION_CODE"
       - uses: actions/upload-artifact@v4
         with:
           name: farvater-driver-staging-${{ github.run_number }}

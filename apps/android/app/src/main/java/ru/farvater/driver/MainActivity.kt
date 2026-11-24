@@ -105,7 +105,7 @@ private fun SignIn(model: DriverModel, signUp: () -> Unit) {
                 Wordmark(true)
                 Spacer(Modifier.height(26.dp))
                 Text(
-                    "Вход в\nФАРВАТЕР",
+                    "Вход в\nWaySlate",
                     modifier = Modifier.semantics { heading() },
                     color = Color.White,
                     fontSize = 36.sp,

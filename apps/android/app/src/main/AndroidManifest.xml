@@ -11,7 +11,8 @@
             <data android:scheme="tel" />
         </intent>
     </queries>
-    <application android:label="ФАРВАТЕР" android:allowBackup="false" android:icon="@drawable/ic_farvater"
+    <application android:label="@string/app_name" android:allowBackup="false" android:icon="@drawable/ic_wayslate"
+        android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <receiver android:name=".CallReceiver" android:exported="false" />
         <service android:name=".TripTrackingService" android:foregroundServiceType="location" android:exported="false" />

@@ -76,7 +76,7 @@ export function googleSheetWriter(settings,http=fetch){
     const args=new URLSearchParams();args.append('ranges',header);args.append('ranges',target);
     const existing=await api('/values:batchGet?'+args);
     const [savedHeader,savedRow]=existing.valueRanges.map(range=>range.values?.[0]??[]);
-    if(savedHeader.length&&JSON.stringify(savedHeader)!==JSON.stringify(headings))throw Error('Заголовки листа отличаются. Укажите отдельный лист ФАРВАТЕРА.');
+    if(savedHeader.length&&JSON.stringify(savedHeader)!==JSON.stringify(headings))throw Error('Заголовки листа отличаются. Укажите отдельный лист для отчётов WaySlate.');
     if(savedRow.length&&String(savedRow[0])!==String(row[0]))throw Error('Строка листа занята. Проверьте выделенный лист.');
     await api('/values:batchUpdate',{valueInputOption:'RAW',data:[
       {range:header,values:[headings]},{range:target,values:[row]}]});

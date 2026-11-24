@@ -35,8 +35,8 @@ h3 { font-size:1.03rem; letter-spacing:-.012em }
 .sub, small { color:var(--sub); font-size:.85rem; line-height:1.5 }
 .skip { position:fixed; top:-100px; left:8px; background:var(--surface); padding:12px; z-index:5 }
 .skip:focus { top:8px }
-.brand { display:inline-flex; align-items:center; gap:9px; font-weight:750; font-size:1.06rem; letter-spacing:.1em; color:#f6fbff; white-space:nowrap; }
-.brand-mark { width:37px; height:37px; color:#6ae5ce; flex-shrink:0; }
+.brand { display:inline-flex; align-items:center; gap:9px; font-weight:750; font-size:1.06rem; color:#f6fbff; white-space:nowrap; }
+.brand-mark { width:37px; height:auto; aspect-ratio:1; flex-shrink:0; }
 .page-head,.panel-head,.actions,.row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .actions { align-items:stretch; }
 .actions > button { text-align:center; text-wrap:balance; }

@@ -9,7 +9,7 @@ import {appRelease} from '../src/app-release.js';
 
 test('Метаданные соответствуют APK, в том числе после атомарной замены файла', async t=>{
   const directory=await mkdtemp(join(tmpdir(),'farvater-apk-'));
-  t.after(()=>rm(directory,{recursive:true,force:true}));
+  t.after(()=>rm(directory,{recursive:true,force:true,maxRetries:3}));
   const path=join(directory,'farvater-driver.apk');
   const read=appRelease(path);
   assert.equal(await read(),null);

@@ -36,7 +36,7 @@ internal fun officeExternalAllowed(uri: URI): Boolean {
 /** This document is returned in memory for one top-level request and never traverses the network. */
 internal fun officeEntryHtml(session: String): String {
     val data = Base64.getEncoder().encodeToString(session.toByteArray(Charsets.UTF_8))
-    return """<!doctype html><html lang="ru"><meta charset="utf-8"><title>ФАРВАТЕР</title>
+    return """<!doctype html><html lang="ru"><meta charset="utf-8"><title>WaySlate</title>
         <script>const bytes=Uint8Array.from(atob('$data'),c=>c.charCodeAt(0));
         sessionStorage.setItem('farvater.session',new TextDecoder().decode(bytes));
         location.replace('/');</script></html>""".trimIndent()

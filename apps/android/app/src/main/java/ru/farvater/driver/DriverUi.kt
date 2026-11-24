@@ -1,6 +1,7 @@
 package ru.farvater.driver
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,6 +18,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser as VectorParser
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -144,15 +148,13 @@ internal fun Wordmark(onDark: Boolean = false) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
-        Surface(shape = RoundedCornerShape(9.dp), color = if (onDark) Mint else Ink) {
-            Box(Modifier.size(31.dp), contentAlignment = Alignment.Center) {
-                Symbol(Mark.Route, color = if (onDark) Ink else Mint, size = 20)
-            }
+        Surface(shape = RoundedCornerShape(8.dp), color = colorResource(R.color.wayslate_ink)) {
+            Image(painterResource(R.drawable.wayslate_mark), contentDescription = null, modifier = Modifier.size(34.dp))
         }
         Text(
-            "ФАРВАТЕР",
+            stringResource(R.string.app_name),
             fontSize = 15.sp,
-            letterSpacing = 1.sp,
+            letterSpacing = 0.sp,
             fontWeight = FontWeight.Bold,
             color = if (onDark) Color.White else MaterialTheme.colorScheme.onSurface,
         )

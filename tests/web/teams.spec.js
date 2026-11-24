@@ -5,7 +5,8 @@ test('экран входа показывает ссылку на APK, когд
   await page.route('**/downloads/farvater-driver.apk',route=>route.fulfill({status:200,
     contentType:'application/vnd.android.package-archive',body:''}));
   await page.goto('/');
-  await expect(page.getByRole('link',{name:'Скачать приложение Android'})).toHaveAttribute('href','/downloads/farvater-driver.apk');
+  await expect(page).toHaveTitle('WaySlate · Доставка воды');
+  await expect(page.getByRole('link',{name:'Скачать WaySlate для Android'})).toHaveAttribute('href','/downloads/farvater-driver.apk');
 });
 
 async function registrationForm(page,name,role){

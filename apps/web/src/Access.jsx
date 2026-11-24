@@ -20,7 +20,7 @@ function AccessLinks(){
     return ()=>controller.abort();
   },[]);
   return <footer className="access-links">
-    {apkAvailable&&<a className="access-map" href={androidApk}><Icon name="download"/>Скачать приложение Android</a>}
+    {apkAvailable&&<a className="access-map" href={androidApk} download="WaySlate.apk"><Icon name="download"/>Скачать WaySlate для Android</a>}
     <a className="access-map" href="/?public-map=1"><Icon name="atlas"/>Учебная карта · 2 рейса</a>
   </footer>;
 }
@@ -86,7 +86,7 @@ export function Login({onLogin,initialError,registration}) {
     <RoleChoices choose={show}/>
     <button type="button" className="link-button access-back" onClick={()=>show('login')}>Вернуться ко входу</button>
   </AccessPanel>;
-  return <AccessPanel title={signup?`Регистрация · ${roleNames[step]}`:'Вход в ФАРВАТЕР'}
+  return <AccessPanel title={signup?`Регистрация · ${roleNames[step]}`:'Вход в WaySlate'}
     description={signup?'Введите код приглашения от администратора команды.':'Управляйте доставками и рейсами своей команды.'}
     showMap={!signup}>
     <form key={step} className="access-form" onSubmit={enter} aria-busy={busy}>

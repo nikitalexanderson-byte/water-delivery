@@ -28,5 +28,5 @@ internal fun UpdateSettings() {
             missingHandler = true
         }
     }
-    if (missingHandler) Muted("Чтобы проверить обновление, откройте ФАРВАТЕР в Google Play.")
+    if (missingHandler) Muted("Чтобы проверить обновление, откройте WaySlate в Google Play.")
 }

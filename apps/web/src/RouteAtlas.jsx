@@ -126,7 +126,7 @@ export function RouteAtlas({day,date,config,get,onOpen,demo,setDemo}){
   },[trips]);
   function changeDemo(){setDemo(!demo);setChosen(null);setPoint(null);setOnly(false);setListShown(true);}
   function locate(){
-    if(!window.isSecureContext){setLocationError('Для геолокации откройте ФАРВАТЕР через HTTPS или на localhost.');return;}
+    if(!window.isSecureContext){setLocationError('Для геолокации откройте WaySlate через HTTPS или на localhost.');return;}
     if(!navigator.geolocation){setLocationError('Этот браузер не поддерживает геолокацию.');return;}
     setLocationError('');setLocating(true);
     navigator.geolocation.getCurrentPosition(position=>{

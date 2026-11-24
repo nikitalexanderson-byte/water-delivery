@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">WaySlate</string>
+    <color name="wayslate_ink">#0E1B32</color>
+</resources>

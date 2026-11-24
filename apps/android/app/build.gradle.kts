@@ -54,14 +54,14 @@ androidComponents {
         variant.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
     }
     onVariants(selector().all()) { variant ->
-        when (variant.buildType) {
-            "debug", "release" -> {
-                variant.sources.kotlin?.addStaticSourceDirectory("src/direct/kotlin")
-                variant.sources.res?.addStaticSourceDirectory("src/direct/res")
-                variant.sources.manifests.addStaticManifestFile("src/direct/AndroidManifest.xml")
-            }
-            "play" -> variant.buildConfigFields!!.put("API_URL", providers.provider {
-                require(uri.scheme == "https") { "Set ANDROID_API_URL to an HTTPS origin for Google Play" }
+        if (variant.buildType == "debug" || variant.buildType == "release") {
+            variant.sources.kotlin?.addStaticSourceDirectory("src/direct/kotlin")
+            variant.sources.res?.addStaticSourceDirectory("src/direct/res")
+            variant.sources.manifests.addStaticManifestFile("src/direct/AndroidManifest.xml")
+        }
+        if (variant.buildType != "debug") {
+            variant.buildConfigFields!!.put("API_URL", providers.provider {
+                require(uri.scheme == "https") { "Set ANDROID_API_URL to an HTTPS origin for distributed builds" }
                 BuildConfigField("String", "\"$driverApiUrl\"", null)
             })
         }

@@ -141,10 +141,10 @@ internal class TripTrackingService : Service() {
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Геопозиция на рейсе", NotificationManager.IMPORTANCE_LOW))
         val open = PendingIntent.getActivity(this, NOTIFICATION, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, NOTIFICATION, Intent(this, TripTrackingService::class.java).setAction(STOP), PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_farvater)
+        return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.wayslate_mark)
             .setContentTitle("Геопозиция на рейсе").setContentText("Оператор и администратор видят ход рейса.")
             .setOnlyAlertOnce(true).setOngoing(true).setContentIntent(open)
-            .addAction(Notification.Action.Builder(Icon.createWithResource(this, R.drawable.ic_farvater), "Остановить", stop).build()).build()
+            .addAction(Notification.Action.Builder(Icon.createWithResource(this, R.drawable.wayslate_mark), "Остановить", stop).build()).build()
     }
 
     override fun onDestroy() {

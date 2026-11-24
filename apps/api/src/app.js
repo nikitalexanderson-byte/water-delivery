@@ -259,7 +259,7 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
     ensure(administrators.includes(req.user.role),denied,403);
     const date=v.date.parse(req.query.date);
     const {reports}=await db.transaction(tx=>dayView(tx,req.user,date,config,clock(),{includeCustomers:false}));
-    res.attachment('farvater-'+date+'.csv').type('text/csv; charset=utf-8').send(reportCsv(reports));
+    res.attachment('WaySlate-'+date+'.csv').type('text/csv; charset=utf-8').send(reportCsv(reports));
   });
   app.get('/api/resources',async(req,res)=>{
     ensure(office.includes(req.user.role),denied,403);

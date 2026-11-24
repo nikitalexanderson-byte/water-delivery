@@ -1,8 +1,9 @@
 # Build in a clean temporary tree. Synced Windows folders can inject desktop.ini
 # into Android resource directories, where aapt treats it as an invalid resource.
-param([switch]$Usb, [switch]$Qa, [switch]$Play)
+param([switch]$Usb, [switch]$Qa, [switch]$Play, [switch]$Release)
 $ErrorActionPreference = "Stop"
 if ($Play -and ($Usb -or $Qa)) { throw "-Play creates a store bundle. Use -Usb and -Qa for debug APKs." }
+if ($Release -and ($Usb -or $Qa -or $Play)) { throw "-Release creates a standalone unsigned APK. Use -Release on its own." }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $source = (Resolve-Path (Join-Path $repo "apps/android")).Path
 $tempRoot = (Resolve-Path (Get-Item ([System.IO.Path]::GetTempPath())).FullName).Path
@@ -44,6 +45,8 @@ try {
         $gradleArguments = @("-ProuteMapAssetsDir=$mapStage", "--max-workers=2", "--console=plain")
         if ($Play) {
             $gradleArguments += @(":app:testPlayUnitTest", ":app:bundlePlay")
+        } elseif ($Release) {
+            $gradleArguments += @(":app:testDebugUnitTest", ":app:assembleRelease")
         } else {
             $gradleArguments += @("testDebugUnitTest", "assembleDebug")
         }
@@ -63,6 +66,12 @@ try {
     }
     $artifacts = Join-Path $repo ".local/apk"
     $null = New-Item -ItemType Directory -Force -Path $artifacts
+    if ($Release) {
+        $apk = Join-Path $artifacts "wayslate-release-unsigned.apk"
+        Copy-Item -LiteralPath (Join-Path $stage "app/build/outputs/apk/release/app-release-unsigned.apk") -Destination $apk
+        Write-Output "APK: $apk"
+        return
+    }
     $usbSuffix = if ($Usb) { "-usb" } else { "" }
     $qaSuffix = if ($Qa) { "-qa" } else { "" }
     $apk = Join-Path $artifacts "farvater-driver$usbSuffix$qaSuffix-debug.apk"

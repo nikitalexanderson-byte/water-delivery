@@ -1,4 +1,4 @@
-# ФАРВАТЕР · проект локального MVP
+# WaySlate · проект локального MVP
 
 ## Цикл работы
 
@@ -55,7 +55,7 @@ flowchart LR
 ## Откуда взяты решения по интерфейсу
 
 - Связанный выбор остановки в списке и на карте помогает диспетчеру переходить от географии к заказу. Эту связку можно увидеть в руководстве Onfleet. [Onfleet · Map & Sidebar](https://support.onfleet.com/hc/en-us/articles/360023669612-Map-Sidebar)
-- Для рейса важно читать остановки в порядке выполнения и видеть их время. В ФАРВАТЕРЕ рядом с остановкой показаны окно клиента и ETA. При разработке использовали описания расписания водителя и временной шкалы OptimoRoute. [Приложение водителя](https://help.optimoroute.com/hc/en-us/articles/27706123857940-Get-started-with-the-OptimoRoute-Driver-app) · [Временная шкала](https://help.optimoroute.com/hc/en-us/articles/27713882472084-View-and-configure-the-timeline)
+- Для рейса важно читать остановки в порядке выполнения и видеть их время. В WaySlate рядом с остановкой показаны окно клиента и ETA. При разработке использовали описания расписания водителя и временной шкалы OptimoRoute. [Приложение водителя](https://help.optimoroute.com/hc/en-us/articles/27706123857940-Get-started-with-the-OptimoRoute-Driver-app) · [Временная шкала](https://help.optimoroute.com/hc/en-us/articles/27713882472084-View-and-configure-the-timeline)
 - Контакты, доступ к точке, корзина и оплата образуют смысловые группы. Понятная групповая подпись помогает проходить форму с клавиатурой и экранным диктором. [W3C WAI · Grouping Controls](https://www.w3.org/WAI/tutorials/forms/grouping/)
 - Для Android ориентиры — подписи действий, семантические заголовки и зона касания от 48 dp. Проверку полного сценария с TalkBack следует проводить на устройстве. [Android Developers · Accessibility in Jetpack Compose](https://developer.android.com/codelabs/jetpack-compose-accessibility)
 

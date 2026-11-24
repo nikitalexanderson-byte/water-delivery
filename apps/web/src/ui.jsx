@@ -28,7 +28,7 @@ export function Icon({ name, size = 18 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{symbols[name]}</svg>;
 }
 export function Brand() {
-  return <span className="brand"><svg aria-hidden="true" viewBox="0 0 42 42" className="brand-mark" fill="none"><path d="M3 29h8l9-18h19l-5 9H24l-7 14H3z" fill="currentColor"/><path d="m21 34 5-10h8l-5 10z" fill="#fff"/></svg>ФАРВАТЕР</span>;
+  return <span className="brand"><img src="/wayslate.svg" width="37" height="37" alt="" className="brand-mark"/>WaySlate</span>;
 }
 
 export function Field({ label, children, wide = false }) {

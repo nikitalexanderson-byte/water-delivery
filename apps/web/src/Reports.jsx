@@ -19,7 +19,7 @@ export function Reports({reports,date,send,download,refresh}) {
       const blob=await download('/reports.csv?date='+date);
       const href=URL.createObjectURL(blob);
       const link=document.createElement('a');
-      link.href=href;link.download='ФАРВАТЕР-'+date+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(href),3000);
+      link.href=href;link.download='WaySlate-'+date+'.csv';link.click();setTimeout(()=>URL.revokeObjectURL(href),3000);
     } catch(err){setError(err.message);} finally{setBusy(false);}
   }
   async function review(id) {

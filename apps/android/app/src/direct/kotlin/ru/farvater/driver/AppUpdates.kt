@@ -36,6 +36,7 @@ import java.security.MessageDigest
 
 private const val ApkType = "application/vnd.android.package-archive"
 private const val ApkLimit = 128L * 1024 * 1024
+private const val InstallerPermissionMessage = "Разрешите WaySlate открывать установщик обновлений в настройках Android."
 
 internal data class UpdateRelease(val version: Long, val size: Long, val sha256: String) {
     companion object {
@@ -163,7 +164,7 @@ internal fun AppUpdateNotice() {
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.update", file)
             context.startActivity(Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, ApkType)
-                clipData = ClipData.newRawUri("ФАРВАТЕР", uri)
+                clipData = ClipData.newRawUri(context.getString(R.string.app_name), uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             })
         }.onFailure { model.showMessage("Не удалось открыть установщик Android.") }
@@ -171,7 +172,7 @@ internal fun AppUpdateNotice() {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         waitingPath?.let {
             if (context.packageManager.canRequestPackageInstalls()) install(File(it))
-            else model.showMessage("Разрешите установку приложений из ФАРВАТЕРА в настройках Android.")
+            else model.showMessage(InstallerPermissionMessage)
         }
         waitingPath = null
     }
@@ -191,7 +192,7 @@ internal fun AppUpdateNotice() {
                                         Uri.parse("package:${context.packageName}")))
                                 }.onFailure {
                                     waitingPath = null
-                                    model.showMessage("Разрешите установку приложений из ФАРВАТЕРА в настройках Android.")
+                                    model.showMessage(InstallerPermissionMessage)
                                 }
                             }
                         }

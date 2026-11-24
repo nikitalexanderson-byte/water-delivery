@@ -8,7 +8,7 @@
 	handle /downloads/farvater-driver.apk {
 		root * /srv
 		header Content-Type application/vnd.android.package-archive
-		header Content-Disposition "attachment; filename=farvater-driver.apk"
+		header Content-Disposition "attachment; filename=WaySlate.apk"
 		header Cache-Control "no-cache"
 		file_server
 	}
