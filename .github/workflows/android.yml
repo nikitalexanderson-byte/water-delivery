@@ -1,4 +1,4 @@
-name: Android APK
+name: Android APK and Play bundle
 on:
   push:
     paths: ['apps/android/**', 'packages/route-map/static/**', '.github/workflows/android.yml']
@@ -27,4 +27,25 @@ jobs:
         with:
           name: farvater-driver-debug
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Build and test Google Play variant
+        env:
+          ANDROID_API_URL: https://farvater.example.invalid
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: bash gradlew :app:testPlayUnitTest :app:bundlePlay
+      - name: Inspect packaged Play manifest and bytecode
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --retry 3 \
+            'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar' \
+            --output "$RUNNER_TEMP/bundletool.jar"
+          printf '%s  %s\n' a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29 \
+            "$RUNNER_TEMP/bundletool.jar" | sha256sum --check
+          python3 tools/verify_play.py --bundletool "$RUNNER_TEMP/bundletool.jar" \
+            --bundle app/build/outputs/bundle/play/app-play.aab --version-code "$ANDROID_VERSION_CODE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: farvater-play-ci-unsigned
+          path: apps/android/app/build/outputs/bundle/play/app-play.aab
           if-no-files-found: error

@@ -12,24 +12,31 @@
 .profile strong,.profile small { display:block; color:#fbfeff } .profile small { font-size:.77rem; color:#adbfcc; }
 .avatar,.crew-avatar { display:grid; place-items:center; width:36px; height:36px; flex-shrink:0; border-radius:50%; font-weight:700; color:#baf3e6; background:#28515a; font-size:.84rem; }
 .side-tools { display:flex; gap:5px; margin-top:12px; }
-.side-tools button { background:transparent; border-color:#365063; color:#cee3ed; min-height:35px; min-width:39px; padding:7px; }
+.side-tools button { background:transparent; border-color:transparent; color:#cee3ed; min-height:44px; min-width:44px; padding:7px; }
+.side-tools button:hover { background:#203c50; }
 .work-area { min-width:0; }
 .day-toolbar { background:var(--surface); border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; min-height:66px; padding:10px clamp(18px,2.6vw,42px); gap:12px; }
 .day-switch,.toggle-days,.sync,.library-label,.stat-label { display:inline-flex; align-items:center; gap:10px; }
 .day-label,.library-label { color:var(--sub); font-size:.86rem; font-weight:600; }
-.toggle-days { gap:0; background:var(--inset); padding:3px; border-radius:7px; }
+.toggle-days { display:grid; grid-template-columns:repeat(2,1fr); gap:0; background:var(--inset); padding:3px; border-radius:7px; }
 .toggle-days button { min-height:31px; padding:5px 11px; border:1px solid transparent; color:var(--sub); background:transparent; font-size:.82rem; }
 .toggle-days button[aria-pressed=true] { background:var(--surface); color:var(--ink); border-color:var(--line); box-shadow:0 1px 2px #101d2b12; }
-.calendar-control input:not([type=checkbox]) { width:145px; min-height:36px; font-size:.85rem; padding:4px 8px; border-color:var(--line); font-variant-numeric:tabular-nums; }
+.calendar-control { display:block; position:relative; color:var(--ink); }
+.calendar-value { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:44px; padding:4px 9px; border:1px solid var(--line); border-radius:6px; background:var(--surface); font-size:.875rem; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.calendar-value svg { flex:none; }
+.calendar-control input[type=date] { position:absolute; inset:0; height:100%; opacity:0; cursor:pointer; }
+.calendar-control input[type=date]::-webkit-calendar-picker-indicator { position:absolute; inset:0; width:auto; height:auto; margin:0; padding:0; cursor:pointer; }
+.calendar-control:focus-within { outline:3px solid var(--focus); outline-offset:3px; border-radius:6px; }
+.calendar-control:has(input:disabled) { opacity:.6; }
 .sync { font-size:.79rem; color:var(--sub); }
-.sync .icon-button { min-width:34px; min-height:34px; border-color:var(--line); padding:6px; }
+.sync .icon-button { padding:6px; }
 .work-area main { max-width:1720px; margin:auto; padding:30px clamp(18px,2.6vw,42px) 60px; }
 .page-head { margin-bottom:20px; }
 h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.052em; }
 .page-head .long-date { margin-top:7px; font-size:.91rem }
 .page-head .actions button { min-height:42px; }
 .page-head .page-actions { gap:8px; }
-.page-actions button { text-align:center; }
+.page-actions button { text-align:center; text-wrap:balance; }
 .page-actions svg { flex-shrink:0; }
 .panel { border-radius:12px; }
 .panel-head h2 span,.fleet-selector h2 span { display:inline-flex; align-items:center; justify-content:center; min-width:23px; padding:1px 5px; color:var(--sub); font-weight:600; font-size:.76rem; line-height:1.5; border-radius:5px; background:var(--inset); vertical-align:middle; }
@@ -73,8 +80,6 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
 .filter-bar button span { font-size:.72rem; font-variant-numeric:tabular-nums; }
 .filter-bar button[aria-pressed=true] { color:var(--onblue); background:var(--blue); }
 .journal .panel-head { padding:16px 18px; }
-.journal .search { max-width:255px; }
-.journal .search input { min-height:36px; }
 .journal-table th,.journal-table td { padding:12px 9px; }
 .journal-table th:first-child,.journal-table td:first-child { padding-left:18px; }
 .journal-table th:last-child,.journal-table td:last-child { padding-right:15px; }
@@ -130,7 +135,9 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
 .pick-results p { padding:9px 12px; font-size:.84rem; }
 .pick-results button { width:100%; border:0; border-bottom:1px solid var(--line); border-radius:0; text-align:left; }
 .pick-results .link-button { display:inline; width:auto; }
-.reports-head {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:18px 20px;margin-bottom:14px;}
+.reports-head {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:14px 16px;margin-bottom:14px;}
+.reports-head > button { min-height:44px; padding-inline:9px; text-align:center; text-wrap:balance; }
+.reports-head > button svg { flex:none; }
 .report-totals {display:flex;flex-wrap:wrap;gap:12px 32px;margin:18px 0 24px;}.report-totals dt {font-size:.82rem;color:var(--sub);}.report-totals dd {margin:2px 0 0;font-weight:650;font-size:1.25rem;font-variant-numeric:tabular-nums;}
 .report-layout {display:grid;grid-template-columns:minmax(205px,.42fr) minmax(0,1fr);gap:14px;align-items:start}
 .report-shifts>button {display:grid;gap:4px;width:100%;justify-content:start;text-align:left;border:0;border-top:1px solid var(--line);border-radius:0;}
@@ -188,13 +195,12 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
   .workspace-sheet-identity small {display:block; margin-top:3px;}
   .report-layout {grid-template-columns:minmax(0,1fr);}.report-card .trip-head,.route-pane-head {flex-wrap:wrap;}
   .day-toolbar {padding:6px 12px; min-height:55px; gap:5px;}
-  .day-switch {gap:6px; flex-wrap:wrap;}
+  .day-switch {gap:6px; flex-wrap:wrap; min-width:0;}
   .toggle-days button {min-height:44px; padding:4px 7px;}
-  .calendar-control input:not([type=checkbox]) {width:112px; min-height:44px; font-size:.8rem;}
   .sync .icon-button {min-width:44px; min-height:44px;}
   .work-area main {padding:18px 12px calc(90px + env(safe-area-inset-bottom,0px));}
   .page-head{margin-bottom:15px;gap:10px;}.page-head h1 {font-size:1.85rem; letter-spacing:-.035em;}.page-head .long-date{font-size:.8rem}
-  .page-head .page-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; }
+  .page-head .page-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:stretch; width:100%; }
   .page-head .page-actions button { min-height:46px; padding-inline:8px; }
   .page-actions .primary,.page-actions > :only-child { grid-column:1/-1; }
   .order-overview {grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:14px;}.order-overview>div {padding:12px 14px;}
@@ -202,7 +208,7 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
   .order-overview .volume-stat{border-left:0;}.order-overview .stat-label{font-size:.77rem;}.order-overview .stat-label svg{width:15px;}
   .order-overview .volume-stat>small,.order-overview .value-stat>small{display:none;}
   .journal-rail{grid-template-columns:1fr;}.filter-bar {padding-inline:12px;gap:4px;}.filter-bar button {padding-inline:8px;min-height:40px;}
-  .journal .panel-head {padding:13px 12px;}.journal .search {min-width:145px;flex:1;}.journal .search input {font-size:.8rem;max-width:145px;}
+  .journal .panel-head {padding:13px 12px;}
   .crew {min-width:196px;}.route-pane-head {padding:15px;}.trip-list,.queue {padding-inline:14px;}
   .order-editor .editor-grid {grid-template-columns:minmax(0,1fr);gap:2px;}.order-editor {width:calc(100% - 12px);}
 }

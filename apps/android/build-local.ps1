@@ -1,7 +1,8 @@
 # Build in a clean temporary tree. Synced Windows folders can inject desktop.ini
 # into Android resource directories, where aapt treats it as an invalid resource.
-param([switch]$Usb, [switch]$Qa)
+param([switch]$Usb, [switch]$Qa, [switch]$Play)
 $ErrorActionPreference = "Stop"
+if ($Play -and ($Usb -or $Qa)) { throw "-Play creates a store bundle. Use -Usb and -Qa for debug APKs." }
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $source = (Resolve-Path (Join-Path $repo "apps/android")).Path
 $tempRoot = (Resolve-Path (Get-Item ([System.IO.Path]::GetTempPath())).FullName).Path
@@ -40,12 +41,25 @@ try {
     if (-not $env:JAVA_HOME -and (Test-Path -LiteralPath $studioJava)) { $env:JAVA_HOME = $studioJava }
     Push-Location $stage
     try {
-        $gradleArguments = @("-ProuteMapAssetsDir=$mapStage", "--max-workers=2", "--console=plain", "testDebugUnitTest", "assembleDebug")
+        $gradleArguments = @("-ProuteMapAssetsDir=$mapStage", "--max-workers=2", "--console=plain")
+        if ($Play) {
+            $gradleArguments += @(":app:testPlayUnitTest", ":app:bundlePlay")
+        } else {
+            $gradleArguments += @("testDebugUnitTest", "assembleDebug")
+        }
         if ($Qa) { $gradleArguments += "-PqaApp" }
         & .\gradlew.bat @gradleArguments
         if ($LASTEXITCODE -ne 0) { throw "Android build failed" }
     } finally {
         Pop-Location
+    }
+    if ($Play) {
+        $artifacts = Join-Path $repo ".local/aab"
+        $null = New-Item -ItemType Directory -Force -Path $artifacts
+        $bundle = Join-Path $artifacts "farvater-play.aab"
+        Copy-Item -LiteralPath (Join-Path $stage "app/build/outputs/bundle/play/app-play.aab") -Destination $bundle
+        Write-Output "AAB: $bundle"
+        return
     }
     $artifacts = Join-Path $repo ".local/apk"
     $null = New-Item -ItemType Directory -Force -Path $artifacts

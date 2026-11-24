@@ -3,6 +3,7 @@ package ru.farvater.driver
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -73,8 +74,8 @@ internal fun ShiftView(
             "report" -> day.report?.let { "Вознаграждение · ${money(it.earnings)}" }.orEmpty()
             "preview" -> "Первые точки уже доступны. Выезд можно отметить в день смены."
             "unpublished" -> "Маршрут на завтра откроется с 18:00 по времени базы."
-            "absent" -> "Проверьте другую дату или уточните график у диспетчера."
-            else -> "Диспетчер распределяет заказы. После назначения здесь появится первый рейс."
+            "absent" -> "Проверьте другую дату или уточните график у оператора."
+            else -> "После распределения заказов здесь появится первый рейс."
         }
     val cta =
         when (task.kind) {
@@ -540,6 +541,7 @@ internal fun AccountView(model: DriverModel, password: () -> Unit) {
             enabled = !model.busy && model.pending == null,
             click = password,
         )
+        DriverHelpSetting()
     }
     CardBlock {
         var themes by remember { mutableStateOf(false) }
@@ -557,6 +559,18 @@ internal fun AccountView(model: DriverModel, password: () -> Unit) {
                 }
             }
         }
+    }
+    CardBlock {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .toggleable(value = model.soundsEnabled, role = Role.Switch, onValueChange = model::chooseSounds),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Звуки подтверждения", Modifier.weight(1f))
+            Switch(checked = model.soundsEnabled, onCheckedChange = null)
+        }
+        TextButton(onClick = model::previewSound, enabled = model.soundsEnabled) { Text("Прослушать сигнал") }
     }
     CardBlock {
         Heading("Связь")

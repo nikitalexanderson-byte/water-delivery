@@ -15,20 +15,20 @@ import {confirmShift,startTrip,arrive,deliver,returnTrip,settle} from './executi
 import {reportCsv} from './csv.js';
 import {catalog,createProduct,editProduct} from './products.js';
 import {failDelivery,onSiteSale} from './outcomes.js';
-import {beginSession,createTeam,inviteMember,joinTeam,members,register,teamUserColumns} from './teams.js';
+import {beginSession,inviteMember,joinTeam,members,register,staffActivity,teamUserColumns} from './teams.js';
 import * as v from './validation.js';
 import {appRelease} from './app-release.js';
 
-const office=['operator','dispatcher','manager'];
-const oversight=['dispatcher','manager'];
+const office=['operator','manager'];
+const administrators=['manager'];
 const drivers=['driver'];
 const uuid=z.uuid();
 const idOf=req=>v.id.parse(Number(req.params.id));
 const blank=z.object({});
 const denied='Недостаточно прав для этого действия';
-const noTeamPaths=new Set(['/me','/logout','/password','/teams/create','/teams/join']);
+const noTeamPaths=new Set(['/me','/logout','/password','/teams/join']);
 const registration=z.object({email:z.email().max(254).transform(v=>v.toLowerCase()),
-  name:z.string().trim().min(1).max(120),password:z.string().min(10).max(128)});
+  name:z.string().trim().min(1).max(120),password:z.string().min(10).max(128),role:v.staffRole,code:v.invitationCode});
 
 const tokenDigest=req=>{
   const token=req.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
@@ -118,7 +118,7 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
       LEFT JOIN teams t ON t.id=a.team_id
       WHERE s.digest=$1 AND s.expires_at>now()`,[req.session]));
     ensure(req.user,'Сессия завершена. Войдите снова',401);
-    ensure(req.user.team_id!==null||noTeamPaths.has(req.path),'Создайте команду или примите приглашение.',403);
+    ensure(req.user.team_id!==null||noTeamPaths.has(req.path),'Примите приглашение в команду.',403);
     next();
   });
   // Serialize operational writes for the small fleet. PostgreSQL row locks also cover multiple API processes.
@@ -148,12 +148,16 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   }
   app.get('/api/me',(req,res)=>res.json(req.user));
   app.get('/api/team',async(req,res)=>{
+    ensure(office.includes(req.user.role),denied,403);
     res.json({members:await db.transaction(tx=>members(tx,req.user.team_id))});
   });
-  action('/teams/create',null,z.object({name:z.string().trim().min(1).max(120)}),createTeam);
-  action('/teams/join',null,z.object({code:z.string().trim().toLowerCase().regex(/^[a-f0-9]{32}$/)}),joinTeam);
-  action('/team/invitations',['manager'],z.object({role:z.enum(['driver','operator','dispatcher'])}),inviteMember);
-  action('/team/base',['manager'],z.object({address:z.string().trim().max(300),
+  app.get('/api/team/activity',async(req,res)=>{
+    ensure(administrators.includes(req.user.role),denied,403);
+    res.json({activity:await db.transaction(tx=>staffActivity(tx,req.user.team_id))});
+  });
+  action('/teams/join',null,z.object({code:v.invitationCode}),joinTeam);
+  action('/team/invitations',administrators,z.object({role:v.staffRole}),inviteMember);
+  action('/team/base',administrators,z.object({address:z.string().trim().max(300),
     lat:z.number().min(-90).max(90).nullable(),lon:z.number().min(-180).max(180).nullable()})
     .refine(p=>(p.lat===null)===(p.lon===null),'Укажите широту и долготу вместе.'),async(tx,user,b)=>{
       await tx.query('UPDATE teams SET base_address=$2,base_lat=$3,base_lon=$4 WHERE id=$1',[user.team_id,b.address,b.lat,b.lon]);
@@ -227,25 +231,25 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
       id?v.id.max(2147483647).parse(Number(id)):null)));
   });
   app.get('/api/reports.csv',async(req,res)=>{
-    ensure(oversight.includes(req.user.role),denied,403);
+    ensure(administrators.includes(req.user.role),denied,403);
     const date=v.date.parse(req.query.date);
     const {reports}=await db.transaction(tx=>dayView(tx,req.user,date,config,clock(),{includeCustomers:false}));
     res.attachment('farvater-'+date+'.csv').type('text/csv; charset=utf-8').send(reportCsv(reports));
   });
   app.get('/api/resources',async(req,res)=>{
-    ensure(oversight.includes(req.user.role),denied,403);
+    ensure(office.includes(req.user.role),denied,403);
     const team=req.user.team_id;
     res.json(await db.transaction(async tx=>({drivers:await rows(tx,"SELECT id,name FROM accounts WHERE role='driver' AND team_id=$1 ORDER BY name",[team]),
       vehicles:await rows(tx,'SELECT * FROM vehicles WHERE team_id=$1 ORDER BY id',[team]),products:await catalog(tx,{teamId:team})})));
   });
-  action('/shifts',oversight,v.shift,async(tx,user,input)=>{
+  action('/shifts',office,v.shift,async(tx,user,input)=>{
     ensure(await one(tx,"SELECT 1 FROM accounts WHERE id=$1 AND role='driver' AND team_id=$2",[input.driver_id,user.team_id]),'Экспедитор не найден',404);
     ensure(await one(tx,'SELECT 1 FROM vehicles WHERE id=$1 AND team_id=$2',[input.vehicle_id,user.team_id]),'Автомобиль не найден',404);
     const result=await one(tx,`INSERT INTO shifts(date,driver_id,vehicle_id,start_min,end_min,has_loader)
       VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[input.date,input.driver_id,input.vehicle_id,input.start_min,input.end_min,input.has_loader]);
     await audit(tx,user,'shift.created',result.id);return result;
   });
-  action('/vehicles/:id',oversight,v.vehicle,async(tx,user,input,req)=>{
+  action('/vehicles/:id',administrators,v.vehicle,async(tx,user,input,req)=>{
     const id=idOf(req);
     const vehicle=await one(tx,'SELECT capacity_kg FROM vehicles WHERE id=$1 AND team_id=$2',[id,user.team_id]);
     ensure(vehicle,'Автомобиль не найден',404);
@@ -256,17 +260,17 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
     await audit(tx,user,'vehicle.changed',id,input);return {ok:true};
   },{method:'patch'});
   action('/orders',office,v.order,(tx,u,b)=>createOrder(tx,u,b,config,clock()));
-  action('/orders/:id/bring-forward',oversight,v.version,(tx,u,b,r)=>bringForward(tx,u,idOf(r),b,teamConfig(u),clock()));
+  action('/orders/:id/bring-forward',office,v.version,(tx,u,b,r)=>bringForward(tx,u,idOf(r),b,teamConfig(u),clock()));
   action('/orders/:id',office,v.orderEdit,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,'edit',teamConfig(u),clock()),{method:'patch'});
-  action('/products',oversight,v.product,createProduct);
-  action('/products/:id',oversight,v.product.partial(),(tx,u,b,r)=>editProduct(tx,u,idOf(r),b),{method:'patch'});
-  action('/accounts',['manager'],v.account,async(tx,u,b)=>{
+  action('/products',administrators,v.product,createProduct);
+  action('/products/:id',administrators,v.product.partial(),(tx,u,b,r)=>editProduct(tx,u,idOf(r),b),{method:'patch'});
+  action('/accounts',administrators,v.account,async(tx,u,b)=>{
     const result=await one(tx,'INSERT INTO accounts(email,name,role,password_hash,team_id) VALUES($1,$2,$3,$4,$5) RETURNING id',
       [b.email,b.name,b.role,await passwordHash(b.password),u.team_id]);
     await audit(tx,u,'account.created',result.id,{role:b.role});
     return result;
   });
-  action('/vehicles',oversight,v.newVehicle,async(tx,u,b)=>{
+  action('/vehicles',administrators,v.newVehicle,async(tx,u,b)=>{
     const result=await one(tx,`INSERT INTO vehicles(name,capacity_kg,extra_kg,length_mm,body_height_mm,total_height_mm,team_id)
       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,[b.name,b.capacity_kg,b.extra_kg,b.length_mm,b.body_height_mm,b.total_height_mm,u.team_id]);
     await audit(tx,u,'vehicle.created',result.id);return result;
@@ -274,7 +278,7 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   for(const op of ['cancel','reschedule','verify-address']){
     action('/orders/:id/'+op,office,op==='reschedule'?v.move:v.version,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,op,teamConfig(u),clock()));
   }
-  action('/plan',oversight,v.plan,(tx,u,b)=>allocate(tx,u,b,teamConfig(u),clock()));
+  action('/plan',office,v.plan,(tx,u,b)=>allocate(tx,u,b,teamConfig(u),clock()));
   action('/shifts/:id/confirm',drivers,z.object({has_loader:z.boolean().optional()}),async(tx,u,b,r)=>{
     const settings=teamConfig(u),now=clock(),id=idOf(r);
     const value=await confirmShift(tx,u,id,settings,now,b);
@@ -297,7 +301,7 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
     return {ok:true};
   },{repeat:true});
   action('/shifts/:id/settle',drivers,v.settlement,(tx,u,b,r)=>settle(tx,u,idOf(r),b,config),{repeat:true});
-  action('/reports/:id/review',oversight,blank,async(tx,u,b,r)=>{
+  action('/reports/:id/review',administrators,blank,async(tx,u,b,r)=>{
     const id=idOf(r);
     const item=await one(tx,`UPDATE settlements r SET reviewed=true,reviewed_by=$1 FROM shifts s JOIN accounts a ON a.id=s.driver_id
       WHERE r.id=$2 AND r.shift_id=s.id AND a.team_id=$3 RETURNING r.id`,[u.id,id,u.team_id]);

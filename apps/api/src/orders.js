@@ -116,6 +116,11 @@ export async function allocate(tx,user,input,config,now){
   if(source){
     await rebuildAfterRemoval(tx,source.shift_id,source.id,config,now);
     await audit(tx,user,'order.reassigned',input.order_id,{from_shift:source.shift_id,to_shift:input.shift_id,version:input.version});
+  }else{
+    const incoming=new Set(queue.map(order=>order.id));
+    for(const trip of result.trips)for(const stop of trip.stops){
+      if(incoming.has(stop.order_id))await audit(tx,user,'order.assigned',stop.order_id,{to_shift:trip.shift_id});
+    }
   }
   for(const issue of result.unassigned) await tx.query('UPDATE orders SET reason=$1 WHERE id=$2',[issue.reason,issue.order_id]);
   const assigned=queue.length-result.unassigned.length;
@@ -179,7 +184,7 @@ export async function changeOrder(tx,user,id,input,action,config,now){
   ensure(order,'Заказ не найден',404);
   ensure(order.version===input.version,'Заказ уже изменился. Обновите список');
   if(order.status==='failed' && action==='reschedule') return rescheduleFailed(tx,user,order,input);
-  const inFlight=order.trip_status==='active'&&['manager','dispatcher'].includes(user.role)&&['cancel','reschedule'].includes(action);
+  const inFlight=order.trip_status==='active'&&['manager','operator'].includes(user.role)&&['cancel','reschedule'].includes(action);
   ensure(['assigned','pending'].includes(order.status)&&(!order.trip_status||order.trip_status==='planned'||inFlight),
     'Изменение невозможно после выезда или завершения');
   if(action==='edit') return editOrder(tx,user,order,input,config,now);

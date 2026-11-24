@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Dialog, Empty, Field, Icon, money } from './ui';
+import { Dialog, Empty, Field, Icon, money, SearchField } from './ui';
 import { minuteText, orderStates, toMinutes } from './api';
 import {Basket,initialBasket} from './Basket';
 import {CustomerPicker} from './CustomerPicker';
@@ -80,7 +80,7 @@ export function NewOrder({ date, get, products, config, send, close, saved, prev
     } catch(err) { setError(err.message); } finally {setBusy(false);}
   }
   return <Dialog className="order-editor" title={editing?'Редактирование заказа №'+previous.id:'Новый заказ'} close={()=>{if(!busy) close();}}>
-    <form onSubmit={submit}>{editing&&previous.status==='assigned'&&<p className="notice editor-warning">После изменения заказ вернётся в очередь. Диспетчеру потребуется заново назначить рейс.</p>}
+    <form onSubmit={submit}>{editing&&previous.status==='assigned'&&<p className="notice editor-warning">После изменения заказ вернётся в очередь. Назначьте его на рейс заново.</p>}
     <div className="form-body editor-grid"><div>
       <fieldset><legend>Клиент и адрес</legend><div className="form-grid">
         <CustomerPicker get={get} selected={form.customer==='new'?null:{name:form.name,phone:form.phone}} onChoose={chooseCustomer} allowNew={!editing}/>
@@ -154,7 +154,7 @@ export function Journal({day,onOpen,onRoutes}) {
       <div className="value-stat"><span className="stat-label"><Icon name="orders"/>Сумма заказов</span><strong className="measure">{money(active.reduce((s,o)=>s+Number(o.total),0))}</strong><small>Вода и новая тара</small></div>
     </section>
     <div className="journal-layout"><section className="panel journal"><header className="panel-head"><h2>Журнал заказов <span>{orders.length}</span></h2>
-      <label className="search"><Icon name="search"/><span className="sr-only">Поиск по заказам</span><input type="search" placeholder="Имя, адрес или номер" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+      <SearchField label="Поиск по заказам" placeholder="Имя, адрес или номер" value={query} onChange={e=>setQuery(e.target.value)}/>
     </header><div className="filter-bar" role="group" aria-label="Статус заказа">
       {[['','Все'],['pending','В очереди'],['assigned','Назначены'],['delivered','Доставлены'],...['failed','cancelled'].filter(k=>counts[k]>0||filter===k).map(k=>[k,orderStates[k]])].map(([k,label])=><button key={k} aria-pressed={filter===k} onClick={()=>setFilter(k)}>{label}<span>{k?counts[k]:orders.length}</span></button>)}
     </div>

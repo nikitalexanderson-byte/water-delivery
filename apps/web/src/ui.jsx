@@ -35,6 +35,13 @@ export function Field({ label, children, wide = false }) {
   return <label className={'field' + (wide ? ' wide' : '')}><span>{label}</span>{children}</label>;
 }
 
+export function SearchField({label,showLabel=false,...input}) {
+  return <label className={showLabel?'field search-control':'search-control'}>
+    <span className={showLabel?undefined:'sr-only'}>{label}</span>
+    <span className="search-field"><Icon name="search"/><input type="search" {...input}/></span>
+  </label>;
+}
+
 export function Dialog({ title, close, children, className }) {
   const ref = useRef(null);
   const heading = useId();

@@ -22,6 +22,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     private val api = DriverApi()
     private val store = SecureStore(app)
     private val reminders = CallReminders(app)
+    private val sounds = OperationSounds(app)
     private val scope = BuildConfig.API_URL
     private val appearance=app.getSharedPreferences("driver.appearance",android.content.Context.MODE_PRIVATE)
     var theme by mutableStateOf(appearance.getString("theme","system") ?: "system")
@@ -31,6 +32,22 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         appearance.edit().putString("theme",mode).apply()
         theme=mode
     }
+    var soundsEnabled by mutableStateOf(appearance.getBoolean("sounds_enabled", true))
+        private set
+
+    fun chooseSounds(enabled: Boolean) {
+        appearance.edit().putBoolean("sounds_enabled", enabled).apply()
+        soundsEnabled = enabled
+    }
+
+    fun previewSound() {
+        if (soundsEnabled) sounds.play(OperationCue.Completed)
+    }
+
+    override fun onCleared() {
+        sounds.close()
+        super.onCleared()
+    }
     private var token = ""
     val roads = RoadRepository { path -> api.call(path, token, readTimeoutMs = 35_000) }
     private var account = ""
@@ -38,11 +55,11 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         private set
     var signedIn by mutableStateOf(false)
         private set
+    var workspaceRole by mutableStateOf<String?>(null)
+        private set
     var officeSession by mutableStateOf<String?>(null)
         private set
     var teamSetup by mutableStateOf(false)
-        private set
-    var teamIntent by mutableStateOf<TeamIntent?>(null)
         private set
     var busy by mutableStateOf(false)
         private set
@@ -83,7 +100,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         token = session.getString("token")
         val user = session.getJSONObject("user")
         teamSetup = needsTeamInvite(user)
-        teamIntent = TeamIntent.entries.find { it.name == session.optString("team_intent") }
+        workspaceRole = user.getString("role").takeUnless { teamSetup }?.let { if (it == "dispatcher") "operator" else it }
         account = accountScope(scope, user)
         name = user.getString("name")
         officeSession = if (isOfficeRole(user.getString("role"))) session.toString() else null
@@ -138,8 +155,8 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         token = ""
         account = ""
         signedIn = false
+        workspaceRole = null
         teamSetup = false
-        teamIntent = null
         officeSession = null
         day = null
         pending = null
@@ -156,20 +173,18 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         acceptSession(api.call("login", body = json("email" to email.trim(), "password" to password)))
     }
 
-    fun register(name: String, email: String, password: String, intent: TeamIntent) = action {
-        val session = api.call("register", body = json(
-            "name" to name.trim(), "email" to email.trim(), "password" to password
-        ))
-        session.put("team_intent", intent.name)
-        acceptSession(session)
+    fun register(name: String, email: String, password: String, role: RegistrationRole, code: String) = action {
+        acceptSession(api.call("register", body = json(
+            "name" to name.trim(), "email" to email.trim(), "password" to password,
+            "role" to role.apiValue, "code" to code.trim(),
+        )))
     }
 
-    fun setUpTeam(intent: TeamIntent, value: String) = action {
+    fun joinTeam(code: String) = action {
         // A retry after a lost response can recover an already-created membership.
         val current = api.call("me", token)
         val user = if (needsTeamInvite(current)) {
-            val field = if (intent == TeamIntent.Create) "name" else "code"
-            api.call(intent.apiPath, token, json(field to value.trim())).getJSONObject("user")
+            api.call("teams/join", token, json("code" to code.trim())).getJSONObject("user")
         } else current
         acceptSession(json("user" to user, "token" to token))
     }
@@ -257,8 +272,9 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
     fun retry() = action { pending?.let { send(it) } }
 
     private suspend fun send(command: JSONObject) {
-        try {
-            api.call(command.getString("path"), token, command.getJSONObject("body"), command.getString("key"))
+        val path = command.getString("path")
+        val response = try {
+            api.call(path, token, command.getJSONObject("body"), command.getString("key"))
         } catch (e: ApiError) {
             if (e.status in 400..499 && e.status !in listOf(401, 408, 429)) {
                 store.put("write:$account", null)
@@ -270,6 +286,7 @@ internal class DriverModel(app: Application) : AndroidViewModel(app) {
         store.put("write:$account", null)
         pending = null
         message = command.getString("label")
+        if (soundsEnabled) sounds.play(operationCue(path, response))
         try {
             update(command.getString("date"), announceChanges = false)
         } catch (e: ApiError) {

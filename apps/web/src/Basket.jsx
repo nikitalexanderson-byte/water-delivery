@@ -35,6 +35,6 @@ export function Basket({lines,setLines,products}) {
       <div className="basket-subtotal wide"><span>За позицию <strong className="measure">{money(Number(line.water)*Math.round(Number(line.price)*100))}</strong></span>
         {lines.length>1&&<button type="button" className="link-button" onClick={()=>setLines(old=>old.filter(x=>x.key!==line.key))} aria-label={'Убрать позицию '+(i+1)}>Убрать</button>}</div>
     </div>;
-  })}</div>{!active.length&&<p className="notice">В каталоге нет доступных брендов. Обратитесь к диспетчеру.</p>}
+  })}</div>{!active.length&&<p className="notice">Попросите администратора добавить бренд воды в каталог.</p>}
   {next&&<button className="add-line" type="button" onClick={()=>setLines(old=>[...old,newLine(next)])}><Icon name="plus"/>Добавить позицию</button>}</>;
 }

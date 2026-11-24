@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (dark) Dark else Light) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        AppUpdateNotice(viewModel())
+                        AppUpdateNotice()
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             val office = model.officeSession
                             when {
@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
                                 model.signedIn -> DriverWorkspace(model)
                                 else -> Access(model)
                             }
+                            model.workspaceRole?.let { FirstRunHelpGuide(it) }
                         }
                     }
                 }
@@ -69,13 +70,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Access(model: DriverModel) {
     var choosing by rememberSaveable { mutableStateOf(false) }
-    var intent by rememberSaveable { mutableStateOf<TeamIntent?>(null) }
-    val back = { model.dismissMessage(); choosing = false; intent = null }
-    BackHandler(choosing || intent != null) { if (!model.busy) back() }
+    var role by rememberSaveable { mutableStateOf<RegistrationRole?>(null) }
+    val back = { model.dismissMessage(); if (role != null) role = null else choosing = false }
+    BackHandler(choosing) { if (!model.busy) back() }
     when {
-        intent != null -> RegisterAccount(model, requireNotNull(intent), back)
+        role != null -> RegisterAccount(model, requireNotNull(role), back)
         choosing -> AccountEntry("Как вы будете работать?", back) {
-            TeamChoices { intent = it }
+            Muted("Выберите роль, которую администратор указал в приглашении.")
+            RegistrationChoices { role = it }
         }
         else -> SignIn(model) { model.dismissMessage(); choosing = true }
     }

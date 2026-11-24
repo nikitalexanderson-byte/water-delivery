@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Field,Icon} from './ui';
+import {Icon,SearchField} from './ui';
 
 export function CustomerPicker({get,selected,onChoose,allowNew}){
   const [query,setQuery]=useState('');
@@ -23,8 +23,8 @@ export function CustomerPicker({get,selected,onChoose,allowNew}){
   function choose(value){onChoose(value);setSearching(!value);setQuery('');}
   return <div className="wide customer-picker">{selected&&<div className="picked-client"><div><strong>{selected.name}</strong><small>{selected.phone}</small></div>
     <button className="link-button" type="button" onClick={()=>setSearching(s=>!s)}>{searching?'Свернуть поиск':'Выбрать другого'}</button></div>}
-    {searching&&<><Field label="Поиск клиента по имени или телефону"><input value={query} onChange={e=>setQuery(e.target.value)} type="search" placeholder="Начните вводить имя или номер" autoComplete="off"
-      onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='Enter'){e.preventDefault();if(results.items.length)resultList.current?.querySelector('button')?.focus();}}}/></Field>
+    {searching&&<><SearchField label="Поиск клиента по имени или телефону" showLabel value={query} onChange={e=>setQuery(e.target.value)} placeholder="Имя или телефон" autoComplete="off"
+      onKeyDown={e=>{if(e.key==='ArrowDown'||e.key==='Enter'){e.preventDefault();if(results.items.length)resultList.current?.querySelector('button')?.focus();}}}/>
     {term&&<div className="pick-results" ref={resultList}>
       {results.loading&&<p role="status">Ищем клиентов…</p>}{results.error&&<p role="alert">{results.error} <button className="link-button" type="button" onClick={()=>setRetry(n=>n+1)}>Повторить</button></p>}
       {!results.loading&&!results.error&&!results.items.length&&<p>Клиенты не найдены.</p>}

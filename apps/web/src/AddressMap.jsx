@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {SearchField} from './ui';
 
 const valid=(lat,lon)=>Number.isFinite(lat)&&Math.abs(lat)<=90&&Number.isFinite(lon)&&Math.abs(lon)<=180;
 const display=point=>point.lat.toFixed(6)+', '+point.lon.toFixed(6);
@@ -48,10 +49,8 @@ export function AddressMap({config,get,latitude,longitude,save,close,automatic=t
   }
   return <div className="address-map">
     {automatic&&config.geocoder_enabled!==false&&<>
-      <label>Населённый пункт, улица и дом
-        <input type="search" value={query} maxLength={200} placeholder="Например, Москва, Красная площадь"
-          onChange={e=>updateQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>
-      </label>
+      <SearchField label="Населённый пункт, улица и дом" showLabel value={query} maxLength={200} placeholder="Например, Тула, Советская, 1"
+        onChange={e=>updateQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>
       <div className="address-search"><button type="button" onClick={find} disabled={busy||query.trim().length<3}>{busy?'Ищем…':'Найти на карте'}</button>
         <small>Поиск передаёт введённый адрес сервису Photon (OpenStreetMap).</small></div>
       {status&&<p role="status">{status}</p>}

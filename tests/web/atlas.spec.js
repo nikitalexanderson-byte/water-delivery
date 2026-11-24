@@ -240,7 +240,8 @@ test('на телефоне история клиента повторяется
   const {tomorrow}=await(await request.get('/api/config')).json();
   await signIn(page,'operator');
   await page.getByRole('button',{name:'Завтра',exact:true}).click();
-  await page.getByRole('button',{name:'Клиенты',exact:true}).click();
+  await page.getByRole('button',{name:'Ещё',exact:true}).click();
+  await page.getByRole('dialog',{name:'Другие разделы'}).getByRole('button',{name:'Клиенты',exact:true}).click();
   await page.getByLabel('Найти клиента').fill('70000000001');
   const customer=page.getByRole('button',{name:/Офис «Маяк»/});
   await customer.click();

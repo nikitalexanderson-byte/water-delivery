@@ -34,6 +34,20 @@ async function migrate(tx, name) {
   await tx.exec(await readFile(new URL('../migrations/' + name, import.meta.url),'utf8'));
 }
 
+test('Миграция ролей сохраняет сессии и приглашения бывших диспетчеров',async t=>{
+  const tx=await isolatedSchema(t);
+  const migrations=new URL('../migrations/',import.meta.url);
+  for(const name of (await readdir(migrations)).filter(name=>/^0(0[1-9]|1[01])_.*\.sql$/.test(name)).sort()) await migrate(tx,name);
+  const {id}=await one(tx,`INSERT INTO accounts(email,name,role,password_hash)
+    VALUES('desk@example.test','Офис','dispatcher','fixture') RETURNING id`);
+  await tx.query("INSERT INTO sessions VALUES('existing',$1,now()+interval '1 day')",[id]);
+  await tx.query("INSERT INTO invitations(digest,team_id,role,created_by,expires_at) VALUES('legacy',1,'dispatcher',$1,now()+interval '1 day')",[id]);
+  await migrate(tx,'012_staff_roles.sql');
+  assert.deepEqual(await one(tx,`SELECT a.id,a.role FROM accounts a JOIN sessions s ON s.account_id=a.id
+    WHERE s.digest='existing'`),{id,role:'operator'});
+  assert.equal((await one(tx,"SELECT role FROM invitations WHERE digest='legacy'")).role,'operator');
+});
+
 test('Обновление до каталога сохраняет старую выручку, склад, сверку и снимки смешанной корзины', async t => {
   const tx = await isolatedSchema(t);
   await migrate(tx,'001_core.sql');

@@ -21,13 +21,16 @@ import './teams.css';
 const RouteAtlas=React.lazy(()=>import('./RouteAtlas').then(module=>({default:module.RouteAtlas})));
 
 function loadSession() {
-  try { return JSON.parse(sessionStorage.getItem('farvater.session')); } catch { return null; }
+  try {
+    const session=JSON.parse(sessionStorage.getItem('farvater.session'));
+    return session?.user.role==='dispatcher'?{...session,user:{...session.user,role:'operator'}}:session;
+  } catch { return null; }
 }
 
 function workspaceLocation(role){
   const params=new URLSearchParams(location.search);
   const view=params.get('view');
-  const valid=Object.hasOwn(titles,view)&&!(view==='report'&&role==='operator')&&
+  const valid=Object.hasOwn(titles,view)&&!(view==='report'&&role!=='manager')&&
     (role!=='driver'||view==='orders'||view==='atlas');
   return {tab:valid?view:'orders',demo:view==='atlas'&&params.get('example')==='1'};
 }
@@ -49,9 +52,9 @@ function Workspace({session,exit,theme,toggle}) {
   const get=useCallback((path,signal)=>response(path,{signal}),[response]);
   const send=(path,body,method='POST',key)=>response(path,{method,body,key});
   const day=snapshot?.date===date?snapshot.data:null;
-  const editable=['operator','dispatcher','manager'].includes(user.role);
-  const canPlan=['dispatcher','manager'].includes(user.role);
-  const canReport=canPlan;
+  const editable=['operator','manager'].includes(user.role);
+  const administrator=user.role==='manager';
+  const canPlan=editable;
   const latestDate=useRef(date);latestDate.current=date;
   useEffect(()=>{
     const controller=new AbortController();
@@ -112,14 +115,14 @@ function Workspace({session,exit,theme,toggle}) {
     {editable&&tab==='orders'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'new'})}><Icon name="plus"/>Новый заказ</button>}
     {tab==='orders'&&<button disabled={!day} onClick={()=>setDialog({kind:'calendar'})}><Icon name="calendar"/>Календарь заказов</button>}
     {tab==='orders'&&user.role!=='driver'&&<button disabled={!config} onClick={()=>setDialog({kind:'team'})}><Icon name="customers"/>Команда</button>}
-    {tab==='routes'&&user.role==='manager'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'employee'})}><Icon name="plus"/>Добавить сотрудника</button>}
+    {tab==='routes'&&administrator&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'employee'})}><Icon name="plus"/>Добавить сотрудника</button>}
     {canPlan&&tab==='routes'&&<button disabled={!day} onClick={()=>setDialog({kind:'resources'})}><Icon name="truck"/>Смены и машины</button>}
-    {tab==='routes'&&canPlan&&<button disabled={!day} onClick={()=>setDialog({kind:'vehicle'})}><Icon name="plus"/>Добавить машину</button>}
-    {canReport&&tab==='catalog'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'product'})}><Icon name="plus"/>Новый бренд</button>}
+    {tab==='routes'&&administrator&&<button disabled={!day} onClick={()=>setDialog({kind:'vehicle'})}><Icon name="plus"/>Добавить машину</button>}
+    {administrator&&tab==='catalog'&&<button className="primary" disabled={!day} onClick={()=>setDialog({kind:'product'})}><Icon name="plus"/>Новый бренд</button>}
   </div></header>
   {error&&<p className="error" role="alert">{error}{day?' Показаны последние полученные данные.':''}</p>}
   {message&&<p className="success" role="status">{message}</p>}
-  {day&&tab==='orders'&&user.role==='manager'&&!day.products.some(p=>p.active)&&
+  {day&&tab==='orders'&&administrator&&!day.products.some(p=>p.active)&&
     <p className="notice">Чтобы принять первый заказ, <button className="link-button" onClick={()=>navigate('catalog')}>добавьте бренд воды в каталог</button>.</p>}
   {!day&&!error&&<p role="status">Загружаем данные дня…</p>}
   {day&&tab==='orders'&&<Journal day={day} onOpen={id=>setDialog({kind:'order',id})} onRoutes={()=>navigate(user.role==='driver'?'atlas':'routes')}/>}
@@ -127,7 +130,7 @@ function Workspace({session,exit,theme,toggle}) {
   {day&&tab==='routes'&&<Dispatch key={date} day={day} date={date} config={config} canPlan={canPlan} send={send} refresh={refresh} onOpen={id=>setDialog({kind:'order',id})}/>}
   {day&&tab==='atlas'&&<React.Suspense fallback={<p role="status">Открываем карту рейсов…</p>}><RouteAtlas key={date+':'+demo} day={day} config={config} get={get} demo={demo} setDemo={next=>navigate('atlas',next)} onOpen={id=>setDialog({kind:'order',id})}/></React.Suspense>}
   {day&&tab==='report'&&<Reports key={date} reports={day.reports} date={date} send={send} download={path=>response(path,{csv:true})} refresh={refresh}/>}
-  {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={canReport} edit={product=>setDialog({kind:'product',product})}/>}
+  {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={administrator} edit={product=>setDialog({kind:'product',product})}/>}
   </main></div>
   {mobileMenu&&<MobileWorkspaceMenu kind={mobileMenu} user={user} tab={tab} navigate={mobileNavigate} theme={theme}
     toggle={toggle} password={changePassword} logout={logout} close={()=>setDialog(null)}/>}
@@ -139,7 +142,7 @@ function Workspace({session,exit,theme,toggle}) {
     open={order=>{setDate(order.date);setDialog({kind:'order',id:order.id});setMessage('');}}/>}
   {day&&(dialog?.kind==='new'||dialog?.kind==='edit')&&<NewOrder date={dialog.kind==='edit'?dialog.previous.date:date} editing={dialog.kind==='edit'} previous={dialog.previous} get={get} products={day.products||[]} config={config} send={send} close={()=>setDialog(null)} saved={saved}/>}
   {day&&dialog?.kind==='product'&&<ProductDialog product={dialog.product} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
-  {day&&dialog?.kind==='resources'&&<Resources date={date} get={get} send={send} close={()=>setDialog(null)} refresh={saved}/>}
+  {day&&dialog?.kind==='resources'&&<Resources date={date} get={get} send={send} close={()=>setDialog(null)} refresh={saved} canEditVehicles={administrator}/>}
   {day&&['employee','vehicle'].includes(dialog?.kind)&&<Registration kind={dialog.kind} send={send} close={()=>setDialog(null)} saved={note=>saved(date,note)}/>}
   {order&&dialog?.kind==='order'&&<OrderDetail key={order.id} order={order} trip={day.trips.find(t=>t.id===order.trip_id)} shift={day.shifts.find(s=>s.id===order.shift_id)} shifts={day.shifts} canPlan={canPlan} editable={editable} send={send} close={()=>setDialog(null)} saved={saved} repeat={previous=>setDialog({kind:'new',previous})} edit={previous=>setDialog({kind:'edit',previous})}/>}
   </div>;

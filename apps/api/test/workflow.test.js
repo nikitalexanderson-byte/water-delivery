@@ -143,9 +143,9 @@ test('Досрочная доставка действует только в д�
     const order=future.orders.find(o=>o.id===id);
     assert.deepEqual([order.date,order.early_delivery_date,order.can_deliver_today],[due,early,true]);
     assert.ok((await day('dispatcher',early)).early_orders.some(o=>o.id===id));
-    assert.deepEqual((await day('operator',early)).early_orders,[]);
+    assert.deepEqual((await day('driver1',early)).early_orders,[]);
     const bring=(user,version)=>http('POST','/orders/'+id+'/bring-forward',user,{version},randomUUID());
-    assert.equal((await bring('operator',order.version)).status,403);
+    assert.equal((await bring('driver1',order.version)).status,403);
     assert.equal((await bring('dispatcher',order.version)).status,409);
     assert.deepEqual((await day('dispatcher',due)).orders.find(o=>o.id===id),order);
     const {vehicles}=await success(http('GET','/resources','dispatcher'));
@@ -432,7 +432,7 @@ test('Для действий нужны действующий токен и н
   assert.equal((await http('POST', '/login', null, { email: 'operator@farvater.test', password: 'wrong' })).status, 401);
   assert.equal(accounts.driver1.user.role, 'driver');
   assert.equal(accounts.operator.user.role, 'operator');
-  assert.equal((await http('POST', '/plan', 'operator', { date: today })).status, 403);
+  assert.equal((await http('POST', '/plan', 'driver1', { date: today })).status, 403);
   assert.equal((await http('POST', '/orders', 'driver1', details())).status, 403);
   assert.equal((await http('GET', '/reports.csv?date=' + today, 'driver2')).status, 403);
   accounts.extra = await success(http('POST', '/login', null, { email: 'MANAGER@FARVATER.TEST', password }));
@@ -528,7 +528,7 @@ test('Оплаченная и неоплаченная доставки, одн�
   const started = (await day('driver1')).trips[0];
   assert.equal(started.actual_start, 720);
   assert.equal(started.water_left, 8);
-  assert.equal((await http('POST', `/orders/${orders[0].id}/cancel`, 'operator',
+  assert.equal((await http('POST', `/orders/${orders[0].id}/verify-address`, 'operator',
     { version: orders[0].version }, randomUUID())).status, 409);
   for (const order of orders) {
     const paid = order.payment_method === 'cash';
@@ -580,7 +580,8 @@ test('Расхождения по деньгам, воде и таре сохр�
   assert.equal(report.loader_minutes, 60);
   assert.equal(report.reviewed, false);
   assert.equal((await http('POST', `/reports/${report.id}/review`, 'driver2', {}, randomUUID())).status, 403);
-  await post('dispatcher', `/reports/${report.id}/review`, {});
+  assert.equal((await http('POST', `/reports/${report.id}/review`, 'operator', {})).status, 403);
+  await post('manager', `/reports/${report.id}/review`, {});
   const reviewed = (await day('manager')).reports.find(r => r.id === report.id);
   assert.equal(reviewed.reviewed, true);
   assert.equal(reviewed.matched, false);

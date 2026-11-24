@@ -198,7 +198,7 @@ internal fun OperationDialog(
             "start" -> "Начать рейс"
             "return" -> "Зафиксировать возврат"
             "deliver" -> "Подтвердить доставку"
-            "fail" -> "Сообщить диспетчеру"
+            "fail" -> "Сообщить оператору"
             else -> "Сдать тару и деньги"
         }
     FormPage(
@@ -267,12 +267,12 @@ internal fun OperationDialog(
                 "fail" ->
                     when {
                         stop == null -> error = "Обновите маршрут"
-                        reason.isBlank() -> error = "Укажите причину для диспетчера"
+                        reason.isBlank() -> error = "Укажите причину для оператора"
                         else ->
                             submit(
                                 "orders/$id/fail",
                                 json("version" to stop.version, "reason" to reason.trim()),
-                                "Проблема передана диспетчеру",
+                                "Проблема передана оператору",
                             )
                     }
                 "settle" -> {
@@ -427,7 +427,7 @@ internal fun OperationDialog(
                     OutlinedTextField(
                         value = reason,
                         onValueChange = { reason = it },
-                        label = { Text("Причина для диспетчера") },
+                        label = { Text("Причина для оператора") },
                         minLines = 3,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(11.dp),

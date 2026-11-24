@@ -1,6 +1,5 @@
 package ru.farvater.driver
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -14,10 +13,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
-internal enum class TeamIntent(val label: String, val description: String, val apiPath: String) {
-    Create("Я организую доставку", "Создам команду и приглашу сотрудников.", "teams/create"),
-    Join("Меня пригласили", "Войду в команду по коду от руководителя.", "teams/join"),
+internal enum class RegistrationRole(val apiValue: String, val label: String, val description: String) {
+    Driver("driver", "Экспедитор", "Доставляю заказы и сдаю смену."),
+    Operator("operator", "Оператор", "Принимаю заказы и распределяю рейсы."),
 }
+
+private val invitationPattern = Regex("[0-9a-fA-F]{32}")
 
 @Composable
 internal fun AccountEntry(title: String, back: (() -> Unit)?, content: @Composable ColumnScope.() -> Unit) {
@@ -38,28 +39,30 @@ internal fun AccountEntry(title: String, back: (() -> Unit)?, content: @Composab
 }
 
 @Composable
-internal fun TeamChoices(choose: (TeamIntent) -> Unit) {
-    TeamIntent.entries.forEach { intent ->
+internal fun RegistrationChoices(choose: (RegistrationRole) -> Unit) {
+    RegistrationRole.entries.forEach { role ->
         OutlinedButton(
-            onClick = { choose(intent) }, modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
+            onClick = { choose(role) }, modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
         ) {
             Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Text(intent.label, style = MaterialTheme.typography.titleMedium)
-                Muted(intent.description)
+                Text(role.label, style = MaterialTheme.typography.titleMedium)
+                Muted(role.description)
             }
         }
     }
 }
 
 @Composable
-internal fun RegisterAccount(model: DriverModel, intent: TeamIntent, back: () -> Unit) {
+internal fun RegisterAccount(model: DriverModel, role: RegistrationRole, back: () -> Unit) {
+    var code by remember { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
     val mismatch = confirmation.isNotEmpty() && password != confirmation
-    AccountEntry("Создать аккаунт", back.takeUnless { model.busy }) {
-        Muted(intent.description)
+    AccountEntry("Регистрация · ${role.label}", back.takeUnless { model.busy }) {
+        Muted("Введите код приглашения от администратора команды.")
+        EntryField(code, { code = it.take(60) }, "Код приглашения", KeyboardType.Ascii)
         EntryField(name, { name = it }, "Ваше имя")
         EntryField(email, { email = it }, "Электронная почта", KeyboardType.Email)
         EntryField(password, { password = it }, "Пароль", KeyboardType.Password)
@@ -69,34 +72,22 @@ internal fun RegisterAccount(model: DriverModel, intent: TeamIntent, back: () ->
         if (model.message.isNotBlank()) Feedback(model.message, model.failed)
         Action(
             if (model.busy) "Регистрация…" else "Зарегистрироваться",
-            !model.busy && name.isNotBlank() && email.isNotBlank() &&
+            !model.busy && code.trim().matches(invitationPattern) && name.isNotBlank() && email.isNotBlank() &&
                 password.length >= 10 && password == confirmation,
-        ) { model.register(name, email, password, intent) }
+        ) { model.register(name, email, password, role, code) }
     }
 }
 
 @Composable
 internal fun TeamSetup(model: DriverModel) {
-    var intent by rememberSaveable { mutableStateOf(model.teamIntent) }
-    var value by rememberSaveable { mutableStateOf("") }
-    val back = { model.dismissMessage(); intent = null; value = "" }
-    BackHandler(intent != null && !model.busy, onBack = back)
-    val selected = intent
-    val create = selected == TeamIntent.Create
-    AccountEntry(
-        if (selected == null) "Как вы будете работать?" else if (create) "Создать команду" else "Вступить в команду",
-        back.takeIf { selected != null && !model.busy },
-    ) {
-        if (selected == null) TeamChoices { intent = it }
-        else {
-            Muted(if (create) "Команда получит свой кабинет и каталог." else "Возьмите код у руководителя команды.")
-            EntryField(value, { value = it.take(if (create) 120 else 60) },
-                if (create) "Название команды" else "Код приглашения")
-            Action(
-                if (model.busy) "Подключаем…" else if (create) "Создать команду" else "Присоединиться",
-                !model.busy && (if (create) value.isNotBlank() else value.trim().matches(Regex("[0-9a-fA-F]{32}"))),
-            ) { model.setUpTeam(selected, value) }
-        }
+    var code by remember { mutableStateOf("") }
+    AccountEntry("Вступить в команду", null) {
+        Muted("Введите код от администратора. Роль уже указана в приглашении.")
+        EntryField(code, { code = it.take(60) }, "Код приглашения", KeyboardType.Ascii)
+        Action(
+            if (model.busy) "Подключаем…" else "Присоединиться",
+            !model.busy && code.trim().matches(invitationPattern),
+        ) { model.joinTeam(code) }
         if (model.message.isNotBlank()) Feedback(model.message, model.failed)
         TextButton(onClick = model::logout, enabled = !model.busy) { Text("Выйти из аккаунта") }
     }

@@ -10,14 +10,13 @@ export const titles={orders:'Заказы на день',routes:'Маршрут�
 function workspaceSections(role){
   return sections.filter(([id])=>{
     if(role==='driver')return id==='orders'||id==='atlas';
-    if(id==='customers')return ['operator','dispatcher','manager'].includes(role);
-    if(id==='report')return ['dispatcher','manager'].includes(role);
+    if(id==='report')return role==='manager';
     return true;
   });
 }
 
 function mobileSections(role){
-  const main=role==='operator'?['orders','customers','atlas']:['orders','routes','atlas'];
+  const main=['orders','routes','atlas'];
   const visible=workspaceSections(role);
   return {main:visible.filter(([id])=>main.includes(id)).sort((a,b)=>main.indexOf(a[0])-main.indexOf(b[0])),
     extra:visible.filter(([id])=>!main.includes(id))};
@@ -76,7 +75,11 @@ export function DayToolbar({config,date,choose,global,refresh,updatedAt}) {
   return <div className="day-toolbar">{global?<strong className="library-label"><Icon name="catalog"/>Справочники</strong>:<div className="day-switch">
     <span className="day-label">Рабочий день</span>
     <div className="toggle-days">{[['Сегодня',config?.today],['Завтра',config?.tomorrow]].map(([label,day])=><button key={label} disabled={!day} aria-pressed={date===day} onClick={()=>choose(day)}>{label}</button>)}</div>
-    <label className="calendar-control"><span className="sr-only">Дата рабочего дня</span><input type="date" value={date} disabled={!config} onChange={e=>{if(e.target.value)choose(e.target.value);}}/></label>
+    <label className="calendar-control">
+      <span className="sr-only">Дата рабочего дня</span>
+      <span className="calendar-value" aria-hidden="true">{date?date.split('-').reverse().join('.'):'дд.мм.гггг'}<Icon name="calendar" size={16}/></span>
+      <input type="date" value={date} disabled={!config} onChange={e=>{if(e.target.value)choose(e.target.value);}}/>
+    </label>
     </div>}
     <div className="sync"><span>{updatedAt?'Обновлено '+new Intl.DateTimeFormat('ru-RU',{hour:'2-digit',minute:'2-digit'}).format(updatedAt):''}</span><button className="icon-button" onClick={refresh} aria-label="Обновить данные" title="Обновить данные"><Icon name="refresh" size={16}/></button></div>
   </div>;

@@ -1,13 +1,13 @@
 import React,{useRef,useState} from 'react';
 import {Dialog,Field} from './ui';
-import {roleNames} from './api';
+import {roleNames,staffRoles} from './api';
 
 function EmployeeFields(){
   return <>
     <Field label="Имя сотрудника" wide><input required name="name" maxLength={300} autoFocus autoComplete="off"/></Field>
     <Field label="Электронная почта для входа" wide><input type="email" required name="email" maxLength={254} autoComplete="off"/></Field>
-    <Field label="Роль"><select name="role" defaultValue="driver"><option value="driver">Экспедитор</option>
-      {Object.entries(roleNames).map(([role,name])=><option key={role} value={role}>{name}</option>)}</select></Field>
+    <Field label="Роль"><select name="role" defaultValue="driver">
+      {staffRoles.map(role=><option key={role} value={role}>{roleNames[role]}</option>)}</select></Field>
     <Field label="Пароль для входа (от 10 символов)" wide><input type="password" required minLength={10} maxLength={128} name="password" autoComplete="new-password"/></Field>
   </>;
 }

@@ -120,16 +120,18 @@ export function RouteAtlas({day,config,get,onOpen,demo,setDemo}){
     <header className="atlas-summary">
       <div className="atlas-stats">{[['Рейсов',shown.length],['Точек',stops.length],['Вода',number.format(water)+' бут.'],['Вес воды',number.format(water*20)+' кг']].map(([label,value],i)=>
         <div key={label}><span>{label}</span><strong className={i>=2?'measure':undefined}>{value}</strong></div>)}</div>
-      <button className="atlas-demo" onClick={changeDemo}>{demo?'Вернуться к рабочим рейсам':'Учебный пример'}</button>
+      <div className="atlas-actions">
+        <button onClick={changeDemo}>{demo?'Вернуться к рабочим рейсам':'Учебный пример'}</button>
+        <button disabled={locating} onClick={locate}><Icon name="pin"/>Моё местоположение</button>
+      </div>
     </header>
     {demo&&<p className="atlas-note" role="status">Учебный пример · девять районов Москвы. Для работы с заказами вернитесь к рабочим рейсам.</p>}
-      <div className="atlas-control">
-        {active&&<><label>Выбранный рейс<select value={active.id} onChange={e=>{setChosen(e.target.value);setPoint(null);}}>
+      {active&&<div className="atlas-control">
+        <label>Выбранный рейс<select value={active.id} onChange={e=>{setChosen(e.target.value);setPoint(null);}}>
           {trips.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
-          <button aria-pressed={only} onClick={()=>setOnly(v=>!v)}>{only?'Показать все рейсы':'Только этот рейс'}</button></>}
-        <button disabled={locating} onClick={locate}><Icon name="pin"/>Моё местоположение</button>
-        {active&&<button aria-expanded={listShown} className="atlas-list-toggle" onClick={()=>setListShown(v=>!v)}>{listShown?'Скрыть список':'Показать список'}</button>}
-      </div>
+        <button aria-pressed={only} onClick={()=>setOnly(v=>!v)}>{only?'Показать все рейсы':'Только этот рейс'}</button>
+        <button aria-expanded={listShown} className="atlas-list-toggle" onClick={()=>setListShown(v=>!v)}>{listShown?'Скрыть список':'Показать список'}</button>
+      </div>}
       <div className="atlas-location" role="status" aria-live="polite">
         {locating?'Определяем местоположение…':locationError}
         {!locating&&location&&<span>{locationError?' Последняя отметка':'Местоположение определено'} в {locationTime.format(locatedAt)} · точность <b className="measure">{number.format(Math.ceil(location.accuracy))} м</b></span>}

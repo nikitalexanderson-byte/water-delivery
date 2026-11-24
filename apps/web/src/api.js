@@ -36,4 +36,5 @@ export function toMinutes(value) {
 export const orderStates = { pending:'В очереди', assigned:'Назначен', delivered:'Доставлен', failed:'Срыв доставки', cancelled:'Отменён' };
 export const shiftStates = { pending:'Ожидает выхода', confirmed:'Выход подтверждён', active:'На смене', closed:'Смена сдана' };
 export const tripStates = { planned:'Запланирован', active:'В пути', returned:'На базе' };
-export const roleNames = { operator:'Оператор', dispatcher:'Диспетчер', manager:'Руководитель', driver:'Экспедитор' };
+export const roleNames = { operator:'Оператор', manager:'Администратор', driver:'Экспедитор' };
+export const staffRoles = ['driver','operator'];

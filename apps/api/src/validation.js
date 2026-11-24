@@ -45,8 +45,10 @@ export const shift=z.object({date,driver_id:id,vehicle_id:id,start_min:minute,en
 export const vehicle=z.object({total_height_mm:id.max(15000).nullable(),extra_kg:count});
 export const newVehicle=vehicle.extend({name:text,capacity_kg:id.max(100000),length_mm:id.max(30000),body_height_mm:id.max(10000)})
   .refine(x=>x.extra_kg<=x.capacity_kg,'Масса оборудования превышает грузоподъёмность');
+export const staffRole=z.enum(['operator','driver']);
+export const invitationCode=z.string().trim().toLowerCase().regex(/^[a-f0-9]{32}$/,'Код приглашения должен содержать 32 символа.');
 export const account=z.object({email:z.email().max(254).transform(s=>s.toLowerCase()),name:text,password:z.string().min(10).max(128),
-  role:z.enum(['manager','operator','dispatcher','driver'])});
+  role:staffRole});
 export const product=z.object({name:text,water_price:price,active:z.boolean().optional()});
 export const start=z.object({actual_start:minute,water:count.min(1),items:z.array(counted).optional()});
 export const complete=z.object({version:id,empty:count,paid:z.boolean()});

@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Field,Dialog} from './ui';
 import {toMinutes} from './api';
 
-export function Resources({date,get,send,close,refresh}) {
+export function Resources({date,get,send,close,refresh,canEditVehicles}) {
   const [data,setData]=useState(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
@@ -39,7 +39,7 @@ export function Resources({date,get,send,close,refresh}) {
   return <Dialog title="Смены и машины" close={()=>{if(!busy)close();}}><form onSubmit={save}><div className="form-body">
     {error&&<p className="error" role="alert">{error}</p>}
     {data?<fieldset><legend>Параметры работы</legend><div className="form-grid">
-      <Field label="Действие" wide><select value={mode} onChange={e=>{setMode(e.target.value);setError('');}}><option value="shift">Создать смену</option><option value="vehicle">Уточнить параметры машины</option></select></Field>
+      {canEditVehicles&&<Field label="Действие" wide><select value={mode} onChange={e=>{setMode(e.target.value);setError('');}}><option value="shift">Создать смену</option><option value="vehicle">Уточнить параметры машины</option></select></Field>}
       <Field label="Автомобиль" wide><select required value={vehicle} onChange={e=>selectVehicle(data.vehicles.find(v=>v.id===Number(e.target.value)))}>{data.vehicles.map(v=><option key={v.id} value={v.id}>{v.name} · {v.capacity_kg} кг</option>)}</select></Field>
       {mode==='shift'?<><Field label="Экспедитор" wide><select required value={driver} onChange={e=>setDriver(e.target.value)}>{data.drivers.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
       <Field label="Рабочая дата" wide><input value={workDate} onChange={e=>setWorkDate(e.target.value)} required type="date"/></Field>

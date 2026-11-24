@@ -1,11 +1,11 @@
 import React,{useRef,useState} from 'react';
-import {Dialog,Empty,Field,Icon,money} from './ui';
+import {Dialog,Empty,Field,money,SearchField} from './ui';
 
 export function Catalog({products,canEdit,edit}) {
   const [query,setQuery]=useState('');
   const visible=products.filter(p=>p.name.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru')));
   return <section className="panel"><header className="panel-head"><h2>Бренды воды <span>{visible.length}</span></h2>
-    <label className="search"><Icon name="search"/><span className="sr-only">Поиск по брендам</span><input value={query} onChange={e=>setQuery(e.target.value)} type="search" placeholder="Название бренда"/></label></header>
+    <SearchField label="Поиск по брендам" placeholder="Название бренда" value={query} onChange={e=>setQuery(e.target.value)}/></header>
     {visible.length?<div className="table-scroll"><table><caption className="sr-only">Каталог воды в бутылях по 19 литров</caption>
       <thead><tr><th scope="col">Название</th><th scope="col">Цена за 19 л</th><th scope="col">Для заказа</th></tr></thead><tbody>
       {visible.map(p=><tr key={p.id}><td>{canEdit?<button className="link-button" onClick={()=>edit(p)} aria-label={'Изменить бренд '+p.name}>{p.name}</button>:<strong>{p.name}</strong>}</td>

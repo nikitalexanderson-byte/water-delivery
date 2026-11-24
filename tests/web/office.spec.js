@@ -16,7 +16,7 @@ test('приём вечернего заказа, проверка адреса,
   const headers={Authorization:'Bearer '+driver.token};
   const day=await (await request.get('/api/day?date='+config.tomorrow,{headers})).json();
   expect((await request.post('/api/shifts/'+day.shifts[0].id+'/confirm',{headers,data:{}})).ok()).toBeTruthy();
-  await login(page,'dispatcher');
+  await login(page,'manager');
   await page.getByRole('button',{name:'Новый заказ'}).click();
   const dialog=page.getByRole('dialog');
   await dialog.getByLabel('Имя или организация').fill('Учебная вечерняя точка');
@@ -65,9 +65,9 @@ test('оператор ищет заказ с клавиатуры и возвр
   await page.keyboard.press('Escape');
   await expect(button).toBeFocused();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
-  await page.getByRole('button',{name:'Ещё',exact:true}).click();
-  await page.getByRole('dialog',{name:'Другие разделы'}).getByRole('button',{name:'Маршруты',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Распределить заказы'})).toHaveCount(0);
+  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Распределить заказы'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Добавить сотрудника'})).toHaveCount(0);
 });
 
 test('форма заказа, календарь и команда открываются и закрываются на коротком экране',async({page})=>{
@@ -88,7 +88,7 @@ test('форма заказа, календарь и команда открыв
   }
 });
 
-test('диспетчер создаёт следующую рабочую смену',async({page,request})=>{
+test('оператор создаёт следующую рабочую смену',async({page,request})=>{
   const config=await (await request.get('/api/config')).json();
   const future=new Date(Date.parse(config.tomorrow+'T00:00:00Z')+86400000).toISOString().slice(0,10);
   await login(page,'dispatcher');
@@ -100,7 +100,7 @@ test('диспетчер создаёт следующую рабочую сме
   await expect(page.getByRole('button',{name:/Алексей Морозов/})).toContainText('Ожидает выхода');
 });
 
-test('руководитель проверяет расхождение по безналу после сдачи рейса',async({page,request})=>{
+test('администратор проверяет расхождение по безналу после сдачи рейса',async({page,request})=>{
   async function tokenFor(role){
     const value=await request.post('/api/login',{data:{email:role+'@farvater.test',password}});
     return (await value.json()).token;
@@ -272,10 +272,6 @@ test('третий экипаж регистрируется, получает �
   await modal.getByRole('button',{name:'Добавить сотрудника',exact:true}).click();
   await expect(page.getByRole('status')).toContainText('Кабинет сотрудника создан');
   await expect(page.locator('body')).not.toContainText(initialPassword);
-  await page.getByRole('button',{name:'Выйти',exact:true}).click();
-  await login(page,'dispatcher');
-  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Добавить сотрудника'})).toHaveCount(0);
   await page.getByRole('button',{name:'Добавить машину'}).click();
   await modal.getByLabel('Название машины').fill('Резервная машина 03');
   await modal.getByLabel('Грузоподъёмность, кг').fill('2500');
@@ -284,6 +280,11 @@ test('третий экипаж регистрируется, получает �
   await modal.getByLabel('Высота кузова, м',{exact:true}).fill('2.2');
   await modal.getByRole('button',{name:'Добавить машину'}).click();
   await expect(page.getByRole('status')).toContainText('Машина добавлена в автопарк');
+  await page.getByRole('button',{name:'Выйти',exact:true}).click();
+  await login(page,'dispatcher');
+  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Добавить сотрудника'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Добавить машину'})).toHaveCount(0);
   await page.getByRole('button',{name:'Смены и машины'}).click();
   await modal.getByLabel('Экспедитор').selectOption({label:'Кирилл Лебедев'});
   await modal.getByLabel('Автомобиль').selectOption({label:'Резервная машина 03 · 2500 кг'});
@@ -376,7 +377,7 @@ test('оператор находит клиента по телефону и п
 
 test('узкий экран сохраняет доступ к разделам, смене дня и тёмной теме',async({page})=>{
   await page.setViewportSize({width:360,height:780});
-  await login(page,'dispatcher');
+  await login(page,'manager');
   const profile=page.getByRole('button',{name:'Профиль',exact:true});
   await profile.click();
   const profileSheet=page.getByRole('dialog',{name:'Профиль'});
@@ -406,6 +407,59 @@ test('узкий экран сохраняет доступ к разделам,
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
   }
 });
+
+test('на узком экране дата целиком, поиск шириной с блок и соседние кнопки на одной линии',async({page,request})=>{
+  await page.setViewportSize({width:320,height:740});
+  const config=await (await request.get('/api/config')).json();
+  await login(page,'manager');
+  const picker=page.getByLabel('Дата рабочего дня');
+  const visibleDate=picker.locator('..').locator('.calendar-value');
+  const dateText=date=>date.split('-').reverse().join('.');
+  await expect(visibleDate).toHaveText(dateText(config.today));
+  await picker.fill(config.tomorrow);
+  await expect(visibleDate).toHaveText(dateText(config.tomorrow));
+  const sameRow=async(first,second)=>{
+    const [a,b]=await Promise.all([first.boundingBox(),second.boundingBox()]);
+    expect(a.y).toBeCloseTo(b.y,0);
+    expect(a.height).toBeCloseTo(b.height,0);
+    expect(a.width).toBeCloseTo(b.width,0);
+  };
+  const searchFills=async name=>{
+    const input=page.getByRole('searchbox',{name});
+    await expect(input).toBeVisible();
+    expect(await input.evaluate(el=>{
+      const field=el.closest('.search-field');
+      const container=field.closest('.panel-head,.customers-area');
+      const inner=container.getBoundingClientRect().width-parseFloat(getComputedStyle(container).paddingLeft)-parseFloat(getComputedStyle(container).paddingRight);
+      const ctx=document.createElement('canvas').getContext('2d');
+      ctx.font=getComputedStyle(el).font;
+      return Math.abs(field.getBoundingClientRect().width-inner)<1&&ctx.measureText(el.placeholder).width<el.clientWidth;
+    })).toBeTruthy();
+  };
+  await sameRow(page.getByRole('button',{name:'Календарь заказов'}),page.getByRole('button',{name:'Команда',exact:true}));
+  await searchFills('Поиск по заказам');
+  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
+  await sameRow(page.getByRole('button',{name:'Смены и машины'}),page.getByRole('button',{name:'Добавить машину'}));
+  await expect(visibleDate).toHaveText(dateText(config.tomorrow));
+  await page.getByRole('button',{name:'Карта рейсов',exact:true}).click();
+  await sameRow(page.getByRole('button',{name:'Учебный пример'}),page.getByRole('button',{name:'Моё местоположение'}));
+  const more=page.getByRole('button',{name:'Ещё',exact:true});
+  await more.click();
+  const dialog=page.getByRole('dialog',{name:'Другие разделы'});
+  await expect(dialog.getByRole('button',{name:'Закрыть окно'})).toHaveCSS('border-top-color','rgba(0, 0, 0, 0)');
+  await dialog.getByRole('button',{name:'Клиенты',exact:true}).click();
+  await searchFills('Найти клиента');
+  await more.click();
+  await dialog.getByRole('button',{name:'Отчёты',exact:true}).click();
+  const report=page.locator('.reports-head');
+  const [title,csv]=await Promise.all([report.getByRole('heading').boundingBox(),report.getByRole('button',{name:'Скачать CSV'}).boundingBox()]);
+  expect(csv.x).toBeGreaterThan(title.x);
+  expect(csv.y).toBeLessThan(title.y+title.height);
+  await more.click();
+  await dialog.getByRole('button',{name:'Каталог',exact:true}).click();
+  await searchFills('Поиск по брендам');
+  await expect(page.getByRole('button',{name:'Обновить данные'})).toHaveCSS('border-top-color','rgba(0, 0, 0, 0)');
+});
 test('календарь показывает 30 дней, открывает дату и карточку за весь период',async({page,request})=>{
   const {tomorrow}=await(await request.get('/api/config')).json();
   await page.setViewportSize({width:390,height:844});
@@ -428,7 +482,7 @@ test('календарь показывает 30 дней, открывает д
   await expect(page.getByRole('dialog',{name:'Заказ №'+id})).toBeVisible();
 });
 
-test('диспетчер видит согласованные будущие заказы и назначает один на сегодня',async({page,request})=>{
+test('оператор видит согласованные будущие заказы и назначает один на сегодня',async({page,request})=>{
   const {today,tomorrow}=await(await request.get('/api/config')).json();
   const session=async(role)=>{
     const response=await request.post('/api/login',{data:{email:role+'@farvater.test',password}});

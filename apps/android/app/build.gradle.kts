@@ -1,3 +1,5 @@
+import com.android.build.api.variant.BuildConfigField
+import com.android.build.api.variant.HostTestBuilder
 import java.net.URI
 
 plugins {
@@ -8,7 +10,9 @@ plugins {
 val driverApiUrl = providers.environmentVariable("ANDROID_API_URL")
     .orElse("http://10.0.2.2:8080").get().trimEnd('/')
 val uri = URI(driverApiUrl)
-val androidVersionCode = providers.environmentVariable("ANDROID_VERSION_CODE").map { it.toInt() }.orElse(1)
+val androidVersionCode = providers.environmentVariable("ANDROID_VERSION_CODE").map {
+    it.toInt().also { value -> require(value in 1..2_100_000_000) { "ANDROID_VERSION_CODE must be in 1..2100000000" } }
+}.orElse(1)
 require(uri.scheme in listOf("http", "https") && uri.host != null && uri.userInfo == null &&
     uri.query == null && uri.fragment == null && uri.path.isNullOrEmpty()) {
     "ANDROID_API_URL must contain an HTTP(S) origin, e.g. http://10.0.2.2:8080"
@@ -31,6 +35,10 @@ android {
         debug {
             if (providers.gradleProperty("qaApp").isPresent) applicationIdSuffix = ".qa"
         }
+        create("play") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+        }
     }
     buildFeatures {
         compose = true
@@ -39,6 +47,24 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+androidComponents {
+    beforeVariants(selector().withBuildType("play")) { variant ->
+        variant.hostTests.getValue(HostTestBuilder.UNIT_TEST_TYPE).enable = true
+    }
+    onVariants(selector().all()) { variant ->
+        when (variant.buildType) {
+            "debug", "release" -> {
+                variant.sources.kotlin?.addStaticSourceDirectory("src/direct/kotlin")
+                variant.sources.res?.addStaticSourceDirectory("src/direct/res")
+                variant.sources.manifests.addStaticManifestFile("src/direct/AndroidManifest.xml")
+            }
+            "play" -> variant.buildConfigFields!!.put("API_URL", providers.provider {
+                require(uri.scheme == "https") { "Set ANDROID_API_URL to an HTTPS origin for Google Play" }
+                BuildConfigField("String", "\"$driverApiUrl\"", null)
+            })
+        }
     }
 }
 dependencies {

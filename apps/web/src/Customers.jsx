@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Icon,Empty,money} from './ui';
+import {Icon,Empty,money,SearchField} from './ui';
 import {minuteText,orderStates} from './api';
 import './customers.css';
 
@@ -88,8 +88,7 @@ export function Customers({get,onRepeat}){
     const delay=setTimeout(()=>setSearch(query.trim()),160);return ()=>clearTimeout(delay);
   },[query]);
   return <div className="customers-area">
-    <label className="directory-search"><Icon name="search"/><span className="sr-only">Найти клиента</span>
-      <input type="search" maxLength={200} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Имя, телефон или адрес"/></label>
+    <SearchField label="Найти клиента" maxLength={200} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Имя, телефон или адрес"/>
     {query.trim()===search?<Directory key={search} query={search} get={get} onRepeat={onRepeat}/>:<p role="status">Ищем клиентов…</p>}
   </div>;
 }

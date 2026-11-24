@@ -154,7 +154,8 @@ private fun verifyPackage(context: Context, file: File, version: Long) {
 }
 
 @Composable
-internal fun AppUpdateNotice(model: UpdateModel) {
+internal fun AppUpdateNotice() {
+    val model: UpdateModel = viewModel()
     val context = LocalContext.current
     var waitingPath by remember { mutableStateOf<String?>(null) }
     fun install(file: File) {

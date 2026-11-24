@@ -1,8 +1,5 @@
 .customers-area { min-width:0; }
-.directory-search { display:flex; align-items:center; gap:12px; color:var(--sub); background:var(--surface); border:1px solid var(--input); border-radius:8px; max-width:34rem; padding:0 14px; margin-bottom:18px; }
-.directory-search input { border:0; background:transparent; padding:11px 0; width:100%; min-width:0; color:var(--ink); }
-.directory-search:focus-within { outline:3px solid var(--focus); outline-offset:2px; }
-.directory-search input:focus-visible { outline:none; }
+.customers-area > .search-control { margin-bottom:18px; }
 .customer-directory { display:grid; grid-template-columns:minmax(210px,.8fr) minmax(0,2fr); gap:20px; align-items:start; }
 .person-results,.person-history { background:var(--surface); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
 .person-choice { display:grid; gap:4px; width:100%; justify-items:start; justify-content:stretch; padding:16px 18px; border:0; border-radius:0; border-bottom:1px solid var(--line); text-align:left; overflow-wrap:anywhere; }

@@ -15,8 +15,8 @@ export async function seed(db,config,password){
     if(await one(tx,"SELECT 1 FROM seed_history WHERE name='demo-v1'")) return;
     const drivers=[];
     for(const [login,role,name] of [
-      ['operator','operator','Мария · оператор'],['dispatcher','dispatcher','Анна · диспетчер'],
-      ['manager','manager','Руководитель'],['driver1','driver','Алексей Морозов'],['driver2','driver','Иван Соколов']]){
+      ['operator','operator','Мария'],['dispatcher','operator','Анна'],
+      ['manager','manager','Администратор'],['driver1','driver','Алексей Морозов'],['driver2','driver','Иван Соколов']]){
       const account=await one(tx,'INSERT INTO accounts(email,name,role,password_hash) VALUES($1,$2,$3,$4) RETURNING id',
         [login+'@farvater.test',name,role,await passwordHash(password)]);
       if(role==='driver') drivers.push(account.id);

@@ -50,9 +50,9 @@ export async function dayView(tx,user,date,config,now,{includeCustomers=true}={}
     [orders.map(o=>o.id)]):[];
   const byOrder=grouped(lines,'order_id');
   const byTrip=grouped(await tripStock(tx,trips.map(t=>t.id)),'trip_id');
-  const products=await catalog(tx,{activeOnly:!['dispatcher','manager'].includes(user.role),teamId:user.team_id});
+  const products=await catalog(tx,{activeOnly:user.role!=='manager',teamId:user.team_id});
   const {today,minute}=calendar(config,now);
-  const earlyOrders=['dispatcher','manager'].includes(user.role)&&date===today?await rows(tx,`SELECT o.id,o.name,o.address,o.date::text,o.version,
+  const earlyOrders=!own&&date===today?await rows(tx,`SELECT o.id,o.name,o.address,o.date::text,o.version,
     o.window_start,o.window_end,o.water FROM orders o JOIN customers c ON c.id=o.customer_id
     WHERE c.team_id=$3 AND o.date>$1 AND o.early_delivery_date=$1 AND o.can_deliver_today
     AND o.status='pending' AND o.origin='office' AND o.address_verified AND o.window_end>$2
