@@ -16,8 +16,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser as VectorParser
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -25,10 +27,13 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -270,7 +275,8 @@ internal fun PairLine(label: String, value: String) {
         Text(label, Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             withMetrics(value),
-            modifier = Modifier.widthIn(max = 180.dp),
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -310,13 +316,23 @@ internal fun FormPage(
         properties =
             DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
+        val view = LocalView.current
+        val lightBars = MaterialTheme.colorScheme.background.luminance() > .5f
+        SideEffect {
+            val window = (view.parent as? DialogWindowProvider)?.window
+            if (window != null) {
+                val bars = WindowCompat.getInsetsController(window, view)
+                bars.isAppearanceLightStatusBars = lightBars
+                bars.isAppearanceLightNavigationBars = lightBars
+            }
+        }
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(
                 Modifier.fillMaxSize().safeDrawingPadding().imePadding(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Row(
-                    Modifier.fillMaxWidth().widthIn(max = 600.dp).padding(horizontal = 8.dp),
+                    Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onDismiss) { Symbol(Mark.Back, "Назад") }

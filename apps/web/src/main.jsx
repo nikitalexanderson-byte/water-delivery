@@ -41,7 +41,9 @@ function Workspace({session,exit,theme,toggle}) {
   const [date,setDate]=useState('');
   const [config,setConfig]=useState(null);
   const [snapshot,setSnapshot]=useState(null);
-  const [error,setError]=useState('');
+  const [configError,setConfigError]=useState('');
+  const [dayError,setDayError]=useState(null);
+  const [actionError,setActionError]=useState('');
   const [message,setMessage]=useState('');
   const [dialog,setDialog]=useState(null);
   const [version,setVersion]=useState(0);
@@ -52,13 +54,15 @@ function Workspace({session,exit,theme,toggle}) {
   const get=useCallback((path,signal)=>response(path,{signal}),[response]);
   const send=(path,body,method='POST',key)=>response(path,{method,body,key});
   const day=snapshot?.date===date?snapshot.data:null;
+  const error=actionError||(dayError?.date===date?dayError.message:'')||configError;
   const editable=['operator','manager'].includes(user.role);
   const administrator=user.role==='manager';
   const canPlan=editable;
   const latestDate=useRef(date);latestDate.current=date;
   useEffect(()=>{
     const controller=new AbortController();
-    get('/config',controller.signal).then(c=>{setConfig(c);setDate(d=>d||c.today);setError('');}).catch(err=>{if(!controller.signal.aborted)setError(err.message);});
+    get('/config',controller.signal).then(c=>{if(!controller.signal.aborted){setConfig(c);setDate(d=>d||c.today);setConfigError('');}})
+      .catch(err=>{if(!controller.signal.aborted)setConfigError(err.message);});
     return ()=>controller.abort();
   },[get,version]);
   useEffect(()=>{
@@ -70,8 +74,10 @@ function Workspace({session,exit,theme,toggle}) {
       pending=true;
       try{
         const data=await get('/day?date='+date+'&include_customers=false',controller.signal);
-        if(!controller.signal.aborted&&latestDate.current===date){setSnapshot({date,data,updatedAt:new Date()});setError('');}
-      }catch(err){if(!controller.signal.aborted)setError(err.message);}finally{pending=false;}
+        if(!controller.signal.aborted&&latestDate.current===date){setSnapshot({date,data,updatedAt:new Date()});setDayError(null);}
+      }catch(err){
+        if(!controller.signal.aborted&&latestDate.current===date)setDayError({date,message:err.message});
+      }finally{pending=false;}
     }
     load();
     const timer=setInterval(()=>{if(document.visibilityState==='visible')load();},20000);
@@ -85,16 +91,16 @@ function Workspace({session,exit,theme,toggle}) {
     const url=new URL(location.href);
     if(id==='orders')url.searchParams.delete('view');else url.searchParams.set('view',id);
     if(example&&id==='atlas')url.searchParams.set('example','1');else url.searchParams.delete('example');
-    history.pushState(null,'',url);setView({tab:id,demo:example});setMessage('');setDialog(null);
+    history.pushState(null,'',url);setView({tab:id,demo:example});setMessage('');setActionError('');setDialog(null);
   }
   useEffect(()=>{
-    const back=()=>{setView(workspaceLocation(user.role));setDialog(null);setMessage('');};
+    const back=()=>{setView(workspaceLocation(user.role));setDialog(null);setMessage('');setActionError('');};
     window.addEventListener('popstate',back);
     return ()=>window.removeEventListener('popstate',back);
   },[user.role]);
   async function logout(){
-    setDialog(null);
-    try{await send('/logout',{});exit('');}catch(err){setError(err.message);}
+    setDialog(null);setActionError('');
+    try{await send('/logout',{});exit('');}catch(err){setActionError(err.message);}
   }
   function mobileNavigate(id){
     navigate(id);setDialog(null);

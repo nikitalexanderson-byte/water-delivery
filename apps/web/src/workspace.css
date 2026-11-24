@@ -121,8 +121,12 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
 .queue-panel {scroll-margin-top:12px;}
 .queue-panel .panel-head { padding-bottom:12px; }.queue-panel .panel-head small { display:block; margin-top:4px; color:var(--amber); }
 .plan-action { padding:0 19px 16px; }.plan-action .primary { width:100%; }
-.queue-row { display:block; }.queue-row .actions { margin-top:8px; gap:8px; }.queue-row .actions select { min-height:34px; font-size:.8rem; }
-.queue-row .actions button { min-height:34px;padding:5px 10px;font-size:.8rem; }.queue-row .reason {background:var(--amber-bg);color:var(--amber);padding:4px 7px;border-radius:4px;margin-top:6px;font-size:.78rem;}
+.queue-row { display:block; }
+.queue-row .actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:8px; gap:8px; }
+.queue-row .actions label { display:flex; min-width:0; }
+.queue-row .actions select,.queue-row .actions button { min-height:44px; font-size:.8rem; }
+.queue-row .actions button { padding:5px 8px; }
+.queue-row .reason {background:var(--amber-bg);color:var(--amber);padding:4px 7px;border-radius:4px;margin-top:6px;font-size:.78rem;}
 .order-editor {width:min(920px,calc(100% - 30px));}
 .order-editor .editor-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }.editor-grid>div { min-width:0; }
 .order-editor .dialog-footer { position:sticky; bottom:0; background:var(--surface); }
@@ -138,7 +142,10 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
 .reports-head {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px;padding:14px 16px;margin-bottom:14px;}
 .reports-head > button { min-height:44px; padding-inline:9px; text-align:center; text-wrap:balance; }
 .reports-head > button svg { flex:none; }
-.report-totals {display:flex;flex-wrap:wrap;gap:12px 32px;margin:18px 0 24px;}.report-totals dt {font-size:.82rem;color:var(--sub);}.report-totals dd {margin:2px 0 0;font-weight:650;font-size:1.25rem;font-variant-numeric:tabular-nums;}
+.report-totals {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px 20px;margin:18px 0 24px;}
+.report-totals > div {display:flex;flex-direction:column;gap:4px;min-width:0;}
+.report-totals dt {font-size:.82rem;color:var(--sub);}
+.report-totals dd {margin:auto 0 0;font-weight:650;font-size:1.25rem;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .report-layout {display:grid;grid-template-columns:minmax(205px,.42fr) minmax(0,1fr);gap:14px;align-items:start}
 .report-shifts>button {display:grid;gap:4px;width:100%;justify-content:start;text-align:left;border:0;border-top:1px solid var(--line);border-radius:0;}
 .report-shifts>button[aria-pressed=true] {background:var(--green-bg);color:var(--green);}
@@ -194,9 +201,12 @@ h1 { font-size:clamp(1.85rem,3.15vw,2.8rem); line-height:1.08; letter-spacing:-.
   .workspace-sheet-identity {display:flex; align-items:center; gap:10px; margin-bottom:8px; overflow-wrap:anywhere;}
   .workspace-sheet-identity small {display:block; margin-top:3px;}
   .report-layout {grid-template-columns:minmax(0,1fr);}.report-card .trip-head,.route-pane-head {flex-wrap:wrap;}
-  .day-toolbar {padding:6px 12px; min-height:55px; gap:5px;}
+  .report-totals {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .day-toolbar {display:grid;grid-template-columns:minmax(0,1fr) auto;padding:6px 12px;min-height:55px;gap:5px;}
   .day-switch {gap:6px; flex-wrap:wrap; min-width:0;}
-  .toggle-days button {min-height:44px; padding:4px 7px;}
+  .toggle-days {padding:2px;}
+  .toggle-days button {min-height:44px; padding:4px;}
+  .calendar-value {gap:5px;padding-inline:6px;}
   .sync .icon-button {min-width:44px; min-height:44px;}
   .work-area main {padding:18px 12px calc(90px + env(safe-area-inset-bottom,0px));}
   .page-head{margin-bottom:15px;gap:10px;}.page-head h1 {font-size:1.85rem; letter-spacing:-.035em;}.page-head .long-date{font-size:.8rem}

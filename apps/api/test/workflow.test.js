@@ -458,7 +458,8 @@ test('Смена пароля отзывает обе сессии одного 
 });
 
 test('Контроль окна, тары и компании; версию заказа может изменить только один запрос', async () => {
-  for (const fields of [{ window_end: 550 }, { new_shells: 4 }, { payment_method: 'bank', company: ' ' }]) {
+  for (const fields of [{ window_end: 550 }, { new_shells: 4 }, { payment_method: 'bank', company: ' ' },
+    { phone: '------' }, { phone: '+7 (00)' }, { phone: '+1234567890123456' }]) {
     assert.equal((await http('POST', '/orders', 'operator', { ...details(), ...fields })).status, 400);
   }
   const { id, total } = await post('operator', '/orders', details());
@@ -470,6 +471,15 @@ test('Контроль окна, тары и компании; версию за
       { version, date: tomorrow, window_start: 601, window_end: 1035 }, randomUUID()),
   ]);
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
+});
+
+test('Для продажи на месте нужен номер телефона, а не только форматирующие знаки',async()=>{
+  const response=await http('POST','/trips/1/sale','driver1',{
+    new_customer:{name:'Учебный клиент',phone:'() () ()',address:'Тестовый адрес',category:'retail'},
+    water:1,new_shells:0,water_price:35000,payment_method:'cash',paid:true,empty:0
+  },randomUUID());
+  assert.equal(response.status,400);
+  assert.match((await response.json()).error,/телефон/);
 });
 
 test('Завтрашний маршрут скрыт до 18:00; чужие контакты и рейсы скрыты и после публикации', async () => {

@@ -16,11 +16,13 @@ export const windowFields={window_start:minute,window_end:minute};
 export const goodWindow=x=>x.window_end>x.window_start;
 export const version=z.object({version:id});
 export const move=version.extend({date,...windowFields}).refine(goodWindow,'Проверьте окно доставки');
-const altPhone=z.string().trim().max(24).refine(value=>{
+function hasPhoneNumber(value){
   const digits=value.replace(/\D/g,'').length;
-  return !value || (/^\+?[0-9 ()-]+$/.test(value) && digits>=6 && digits<=15);
-},'Проверьте дополнительный телефон');
-export const order=z.object({customer_id:id.optional(), name:text.optional(),phone:z.string().trim().regex(/^\+?[\d ()-]{6,24}$/).optional(),
+  return /^\+?[0-9 ()-]+$/.test(value) && digits>=6 && digits<=15;
+}
+const phone=z.string().trim().max(24).refine(hasPhoneNumber,'Укажите телефон с 6–15 цифрами.');
+const altPhone=z.string().trim().max(24).refine(value=>!value||hasPhoneNumber(value),'Проверьте дополнительный телефон');
+export const order=z.object({customer_id:id.optional(), name:text.optional(),phone:phone.optional(),
   latitude:z.number().min(-90).max(90).nullish(),longitude:z.number().min(-180).max(180).nullish(),
   alt_phone:altPhone.optional(),entrance:z.string().trim().max(40).optional(),unit:z.string().trim().max(40).optional(),
   parking_minutes:z.number().int().min(0).max(120).optional(),has_cart:z.boolean().optional(),can_deliver_today:z.boolean().optional(),
@@ -54,7 +56,7 @@ export const start=z.object({actual_start:minute,water:count.min(1),items:z.arra
 export const complete=z.object({version:id,empty:count,paid:z.boolean()});
 export const failure=version.extend({reason:z.string().trim().min(1).max(500)});
 export const sale=z.object({customer_order_id:id.optional(),
-  new_customer:z.object({name:text,phone:z.string().trim().regex(/^\+?[\d ()-]{6,24}$/),address:text,category:z.enum(['retail','wholesale'])}).optional(),
+  new_customer:z.object({name:text,phone,address:text,category:z.enum(['retail','wholesale'])}).optional(),
   product_id:id.optional(),water:count.min(1),new_shells:count,water_price:price,
   payment_method:z.enum(['cash','bank']),company:z.string().trim().max(200).default(''),paid:z.boolean(),empty:count})
   .refine(x=>Boolean(x.customer_order_id)!==Boolean(x.new_customer),'Укажите точку рейса или нового клиента')

@@ -40,7 +40,7 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
     val sharing by TripTrackingService.state.collectAsState()
     Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
-            Modifier.fillMaxWidth().padding(4.dp),
+            Modifier.fillMaxWidth().padding(4.dp).height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             listOf(false to "Список", true to "Карта рейсов").forEach { (map, label) ->
@@ -48,7 +48,7 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
                 Surface(
                     onClick = { mapped = map },
                     selected = active,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).fillMaxHeight(),
                     shape = RoundedCornerShape(11.dp),
                     color =
                         if (active) MaterialTheme.colorScheme.surface

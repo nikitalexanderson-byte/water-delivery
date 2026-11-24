@@ -416,6 +416,9 @@ test('на узком экране дата целиком, поиск шири�
   const visibleDate=picker.locator('..').locator('.calendar-value');
   const dateText=date=>date.split('-').reverse().join('.');
   await expect(visibleDate).toHaveText(dateText(config.today));
+  const [calendar,refresh]=await Promise.all([visibleDate.boundingBox(),page.getByRole('button',{name:'Обновить данные'}).boundingBox()]);
+  expect(calendar.x+calendar.width).toBeLessThan(refresh.x);
+  expect(Math.abs(calendar.y-refresh.y)).toBeLessThan(4);
   await picker.fill(config.tomorrow);
   await expect(visibleDate).toHaveText(dateText(config.tomorrow));
   const sameRow=async(first,second)=>{
@@ -459,6 +462,30 @@ test('на узком экране дата целиком, поиск шири�
   await dialog.getByRole('button',{name:'Каталог',exact:true}).click();
   await searchFills('Поиск по брендам');
   await expect(page.getByRole('button',{name:'Обновить данные'})).toHaveCSS('border-top-color','rgba(0, 0, 0, 0)');
+});
+
+test('успешный ответ настроек сохраняет сообщение о сбое загрузки дня',async({page})=>{
+  await login(page,'manager');
+  await expect(page.locator('.journal')).toBeVisible();
+  let releaseConfig;
+  const gate=new Promise(resolve=>{releaseConfig=resolve;});
+  await page.route('**/api/config',async route=>{await gate;await route.continue();});
+  const dayRoute=/\/api\/day\?/;
+  await page.route(dayRoute,route=>route.fulfill({status:503,json:{error:'Рабочий день временно недоступен'}}));
+  const refresh=page.getByRole('button',{name:'Обновить данные'});
+  const alert=page.getByRole('alert');
+  const configResponse=page.waitForResponse(response=>response.url().endsWith('/api/config'));
+  try{
+    await refresh.click();
+    await expect(alert).toContainText('Рабочий день временно недоступен');
+  }finally{releaseConfig();}
+  await (await configResponse).finished();
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+  await expect(alert).toContainText('Рабочий день временно недоступен');
+  await expect(page.locator('.journal')).toBeVisible();
+  await page.unroute(dayRoute);
+  await refresh.click();
+  await expect(alert).toHaveCount(0);
 });
 test('календарь показывает 30 дней, открывает дату и карточку за весь период',async({page,request})=>{
   const {tomorrow}=await(await request.get('/api/config')).json();

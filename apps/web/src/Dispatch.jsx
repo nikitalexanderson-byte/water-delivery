@@ -9,7 +9,7 @@ function PendingOrder({order,shifts,onAssign,onOpen,canPlan,working}) {
     <small>{order.address} · {minuteText(order.window_start)}–{minuteText(order.window_end)} · <span className="measure">{order.water} бут.</span></small>
     {order.reason && <small className="reason">{order.reason}</small>}
     {!order.address_verified && !order.reason && <small className="reason">Адрес ожидает подтверждения</small>}
-  </div>{canPlan&&eligible.length>0&&<form className="actions" onSubmit={e=>{e.preventDefault();onAssign(order.id,Number(shiftId));}}>
+  </div>{canPlan&&eligible.length>0&&<form className="actions" onSubmit={e=>{e.preventDefault();onAssign(order.id,Number(shiftId),order.version);}}>
     <label><span className="sr-only">{'Смена для заказа №'+order.id}</span><select value={shiftId} onChange={e=>setShiftId(e.target.value)} required><option value="">Выбрать смену</option>{eligible.map(s=><option value={s.id} key={s.id}>{s.driver_name}</option>)}</select></label>
     <button type="submit" disabled={!shiftId||working}>Назначить</button>
   </form>}</div>;
@@ -24,10 +24,10 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
   const queue=orders.filter(o=>o.status==='pending');
   const shift=shifts.find(s=>s.id===selectedId)||shifts[0];
   const shiftTrips=trips.filter(t=>t.shift_id===shift?.id).sort((a,b)=>a.number-b.number);
-  async function plan(orderId,shiftId) {
+  async function plan(orderId,shiftId,version) {
     setError('');setMessage('');setBusy(true);
     try {
-      const result=await send('/plan',{date,...(orderId?{order_id:orderId,shift_id:shiftId}:{})});
+      const result=await send('/plan',{date,...(orderId?{order_id:orderId,shift_id:shiftId,version}:{})});
       const left=result.unassigned||[];
       const message='Назначено заказов: '+result.assigned+'. Осталось после подбора: '+left.length+'.';
       const source={yandex:'Время в пути рассчитано по прогнозу пробок Яндекса.',
