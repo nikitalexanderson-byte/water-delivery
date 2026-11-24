@@ -30,7 +30,10 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
       const result=await send('/plan',{date,...(orderId?{order_id:orderId,shift_id:shiftId}:{})});
       const left=result.unassigned||[];
       const message='Назначено заказов: '+result.assigned+'. Осталось после подбора: '+left.length+'.';
-      setMessage(message+(left.length===1?' '+left[0].reason:''));
+      const source={yandex:'Время в пути рассчитано по прогнозу пробок Яндекса.',
+        mixed:'Прогноз Яндекса доступен для части пути. Остальное время рассчитано по оценке.',
+        estimate:'Время в пути рассчитано без прогноза пробок Яндекса.'}[result.traffic_source];
+      setMessage([message,left.length===1?left[0].reason:'',source].filter(Boolean).join(' '));
       refresh();
     }catch(err){setError(err.message);refresh();}finally{setBusy(false);}
   }
@@ -67,7 +70,7 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
         {extraSales.some(s=>s.source_order_id==null)&&<section aria-label="Продажи вне плановых остановок"><h4>Продажи вне плановых остановок</h4>
           {extraSales.filter(s=>s.source_order_id==null).map(s=><div key={s.id}><button className="link-button" onClick={()=>onOpen(s.id)}>№ {s.id} · {s.name} · <span className="measure">{s.water} бут.</span></button></div>)}</section>}
         </article>;
-      })}<p className="model-note"><Icon name="time" size={14}/>Время прибытия рассчитано тестовой моделью.</p></div>:<Empty title="Рейсы ещё не сформированы" detail="После распределения здесь появятся остановки и время прибытия."/>}
+      })}<p className="model-note"><Icon name="time" size={14}/>Время прибытия включает дорогу, окно и обслуживание точки.</p></div>:<Empty title="Рейсы ещё не сформированы" detail="После распределения здесь появятся остановки и время прибытия."/>}
     </section>
     <section className="panel queue-panel" id="dispatch-queue"><div className="panel-head"><div><h2>Очередь распределения <span>{queue.length}</span></h2>{problems>0&&<small>Требуют проверки · {problems}</small>}</div></div>
     {canPlan&&<div className="plan-action"><button className="primary" disabled={!queue.length||busy} onClick={()=>plan()}><Icon name="routes"/>{busy?'Идёт подбор…':'Распределить заказы'}</button></div>}

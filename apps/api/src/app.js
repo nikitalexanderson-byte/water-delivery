@@ -20,6 +20,7 @@ import * as v from './validation.js';
 import {appRelease} from './app-release.js';
 import {currentLocations,updateLocation} from './tracking.js';
 import {addBase,chooseBase,teamBases,trainingDepot} from './bases.js';
+import {prepareTrafficForecast,forecastRouting} from './traffic-forecast.js';
 
 const office=['operator','manager'];
 const administrators=['manager'];
@@ -41,7 +42,7 @@ const tokenDigest=req=>{
   return token?digest(token):null;
 };
 
-export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fetch,roadFetch=fetch}){
+export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fetch,roadFetch=fetch,matrixFetch=fetch}){
   const app=express();
   const getAppRelease=appRelease(settings.apkDownloadPath);
   const searchPlaces=createPlaceSearch(settings.geocoder,{fetchImpl:placeFetch});
@@ -130,7 +131,7 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
     next();
   });
   // Serialize operational writes for the small fleet. PostgreSQL row locks also cover multiple API processes.
-  function action(path,roles,schema,handler,{repeat=false,method='post'}={}){
+  function action(path,roles,schema,handler,{repeat=false,method='post',prepare}={}){
     app[method]('/api'+path,async(req,res)=>{
       ensure(!roles||roles.includes(req.user.role),denied,403);
       const input=schema.parse(req.body??{});
@@ -138,17 +139,18 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
       if(repeat) ensure(key && uuid.safeParse(key).success,'Нужен Idempotency-Key в формате UUID',400);
       // Optional keys allow office clients to safely retry creation as well.
       if(key) ensure(uuid.safeParse(key).success,'Некорректный Idempotency-Key',400);
+      const signature=key&&digest(req.method+' '+req.path+' '+JSON.stringify(input));
+      const priorRequest=key&&prepare&&await db.transaction(tx=>one(tx,'SELECT 1 FROM requests WHERE actor=$1 AND key=$2',[req.user.id,key]));
+      const prepared=prepare&&!priorRequest?await prepare(req.user,input):null;
       const result=await db.transaction(async tx=>{
         await writeLock(tx);
         ensure(await one(tx,'SELECT 1 FROM sessions WHERE digest=$1 AND expires_at>now()',[req.session]),'Сессия завершена',401);
-        let signature;
         if(key){
-          signature=digest(req.method+' '+req.path+' '+JSON.stringify(input));
           const prior=await one(tx,'SELECT signature,result FROM requests WHERE actor=$1 AND key=$2',[req.user.id,key]);
           if(prior){ ensure(prior.signature===signature,'Ключ запроса уже использован для других данных');return prior.result; }
         }
         const base=req.user.team_id===null?null:await one(tx,'SELECT base_address,base_lat,base_lon FROM teams WHERE id=$1',[req.user.team_id]);
-        const result=await handler(tx,{...req.user,...base},input,req);
+        const result=await handler(tx,{...req.user,...base},input,req,prepared);
         if(key) await tx.query('INSERT INTO requests VALUES($1,$2,$3,$4)',[req.user.id,key,signature,JSON.stringify(result)]);
         return result;
       });
@@ -303,7 +305,12 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   for(const op of ['cancel','reschedule','verify-address']){
     action('/orders/:id/'+op,office,op==='reschedule'?v.move:v.version,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,op,teamConfig(u),clock()));
   }
-  action('/plan',office,v.plan,(tx,u,b)=>allocate(tx,u,b,teamConfig(u),clock()));
+  action('/plan',office,v.plan,async(tx,user,input,req,forecast)=>{
+    const team=teamConfig(user);
+    const routing=forecast&&forecastRouting(forecast,team);
+    const result=await allocate(tx,user,input,routing?.settings??team,clock());
+    return {...result,...(routing?.summary()??{traffic_source:'estimate'})};
+  },{prepare:(user,input)=>prepareTrafficForecast(db,user,input,config,clock(),matrixFetch)});
   action('/shifts/:id/confirm',drivers,z.object({has_loader:z.boolean().optional()}),async(tx,u,b,r)=>{
     const settings=teamConfig(u),now=clock(),id=idOf(r);
     const value=await confirmShift(tx,u,id,settings,now,b);
