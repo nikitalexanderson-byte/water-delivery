@@ -49,7 +49,7 @@ jobs:
           node --env-file=.env --input-type=module <<'JS'
           const base='http://127.0.0.1:'+process.env.API_PORT;
           const web=await fetch(base);
-          if(!web.ok || !(await web.text()).includes('ФАРВАТЕР')) throw Error('web panel');
+          if(!web.ok || !(await web.text()).includes('<title>WaySlate · Доставка воды</title>')) throw Error('web panel');
           const map=await fetch(base+'/route-map/index.html');
           if(!map.ok || !(await map.text()).includes('id="canvas"')) throw Error('map shell');
           const example=await (await fetch(base+'/route-map/example.json')).json();
