@@ -34,7 +34,7 @@ curl -fsS https://ВАШ-ДОМЕН/health/ready
 bash deploy/backup.sh
 ```
 
-Откройте домен в браузере и пройдите «Создать аккаунт → Я организую доставку». В «Команда → Адрес и координаты базы» введите производство. В каталоге добавьте бренды, затем машины и смены. Приглашения сотрудников используют код с назначенной ролью и сроком 48 часов. Для приёмки с тестовыми точками можно включить `GEOCODER_ENABLED` и `ROAD_ROUTER_ENABLED`. Для постоянного использования задайте согласованные адресные и дорожные сервисы. Публичный OSRM показывает среднее дорожное время. Отдельный OSRM с данными региона готовится как самостоятельный сервис.
+Создайте администратора командой `node apps/api/src/account.js` в окружении API. После входа откройте «Команда → Адрес и координаты базы» и укажите производство. В каталоге добавьте бренды, затем машины и смены. Операторы и экспедиторы регистрируются по приглашениям с назначенной ролью и сроком 48 часов. Для приёмки с тестовыми точками можно включить `GEOCODER_ENABLED` и `ROAD_ROUTER_ENABLED`. Для постоянного использования задайте согласованные адресные и дорожные сервисы. Публичный OSRM показывает среднее дорожное время. Отдельный OSRM с данными региона готовится как самостоятельный сервис.
 
 Для сборки Android к этому стенду задайте `ANDROID_API_URL=https://ВАШ-ДОМЕН` и запустите `apps/android/build-local.ps1` без флага `-Usb`. После подготовки постоянного ключа подписи используйте его для обновлений Android.
 
@@ -42,9 +42,11 @@ bash deploy/backup.sh
 
 Для обновления сохраните `bash deploy/backup.sh`, обновите checkout до выбранного коммита и повторите `docker compose … up --build -d --wait`. Скрипт создаёт архив с закрытыми правами и проверяет его читаемость. Для восстановления откройте отдельную пустую БД. Храните копию вне VPS. CI проверяет запуск стека за Caddy и восстановление дампа в отдельную одноразовую БД.
 
-### Выкладка тестового стенда через GitHub Actions
+### Выкладка через GitHub Actions
 
-`Release staging` запускается вручную только из `main`. В окружении GitHub `staging` задайте переменные `STAGING_SITE_URL` с HTTPS-адресом панели, `STAGING_HOST` с SSH-адресом и `STAGING_SSH_KNOWN_HOSTS` с проверенным ключом хоста. Секреты `STAGING_SSH_PRIVATE_KEY`, `STAGING_ANDROID_KEYSTORE` (PKCS#12 в Base64) и `STAGING_ANDROID_KEYSTORE_PASSWORD` хранятся в GitHub. Псевдоним ключа подписи APK — `farvater-staging`.
+`Release WaySlate` запускается вручную из `main`. Выберите целевую среду в поле `target`. Для `staging` используйте переменные `STAGING_SITE_URL`, `STAGING_HOST`, `STAGING_SSH_KNOWN_HOSTS` и секрет `STAGING_SSH_PRIVATE_KEY` в одноимённом окружении GitHub. Для `production` задайте HTTPS-адрес в переменной репозитория `PRODUCTION_SITE_URL`. В окружении `production` задайте `PRODUCTION_HOST`, `PRODUCTION_SSH_KNOWN_HOSTS` и отдельный секрет `PRODUCTION_SSH_PRIVATE_KEY`.
+
+Обе сборки подписываются одним ключом. Его секреты `STAGING_ANDROID_KEYSTORE` (PKCS#12 в Base64) и `STAGING_ANDROID_KEYSTORE_PASSWORD` остаются в окружении `staging`. Псевдоним ключа подписи APK — `farvater-staging`.
 
 На VPS checkout `main` и `.env.vps` находятся в `/opt/farvater`, владелец — `farvater-deploy`. Этому пользователю нужен доступ к Docker. Скопируйте `deploy/staging-release.sh` в `/usr/local/sbin/farvater-staging-release` с владельцем `root` и режимом `0755`. Для ключа выкладки укажите `restrict,command="/usr/local/sbin/farvater-staging-release"` в `authorized_keys`. Приватный ключ администратора и приватный ключ выкладки должны различаться.
 
