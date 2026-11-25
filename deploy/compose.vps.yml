@@ -19,6 +19,7 @@ services:
     build:
       context: ..
       network: ${VPS_BUILD_NETWORK:-host}
+      entitlements: [network.host]
     restart: unless-stopped
     environment:
       API_HOST: 0.0.0.0
