@@ -40,8 +40,10 @@ export const order=z.object({customer_id:id.optional(), name:text.optional(),pho
   .refine(x=>x.payment_method!=='bank'||x.company,'Для безнала укажите компанию')
   .refine(x=>x.items || (x.water!=null && x.water_price!=null),'Укажите состав заказа и цену');
 export const orderEdit=order.safeExtend({version:id,customer_id:id});
-export const plan=z.object({date,order_id:id.optional(),shift_id:id.optional(),version:id.optional()})
-  .refine(x=>Boolean(x.order_id)===Boolean(x.shift_id),'Для ручного назначения выберите заказ и смену');
+export const plan=z.object({date,order_id:id.optional(),shift_id:id.optional(),version:id.optional(),
+  suggested_trip:z.number().int().min(1).max(2).optional()})
+  .refine(x=>Boolean(x.order_id)===Boolean(x.shift_id),'Для ручного назначения выберите заказ и смену')
+  .refine(x=>!x.suggested_trip||(x.order_id&&x.version),'Обновите предложение перед назначением');
 export const shift=z.object({date,driver_id:id,vehicle_id:id,start_min:minute,end_min:minute,has_loader:z.boolean().default(false)})
   .refine(x=>x.end_min>x.start_min,'Окончание смены должно быть позже начала');
 export const vehicle=z.object({total_height_mm:id.max(15000).nullable(),extra_kg:count});

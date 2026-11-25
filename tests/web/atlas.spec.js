@@ -72,6 +72,25 @@ test('учебные рейсы: итоги, выбор карты и списк
   expect(requestedTiles).toEqual([]);
 });
 
+test('учебная карта открывается на весь экран и сворачивается с клавиатуры',async({page})=>{
+  await page.goto('/?public-map=1');
+  const expand=page.getByRole('button',{name:'На весь экран',exact:true});
+  for(const size of [{width:390,height:844},{width:1280,height:800}]){
+    await page.setViewportSize(size);
+    await expand.click();
+    const dialog=page.getByRole('dialog',{name:'Карта рейсов'});
+    await expect(dialog).toBeVisible();
+    await expect(iframe(page).locator('.stop-icon')).toHaveCount(9);
+    const box=await dialog.locator('iframe').boundingBox();
+    expect(box.width).toBe(size.width);
+    expect(box.height).toBeGreaterThan(size.height-85);
+    await iframe(page).getByRole('button',{name:'Весь маршрут',exact:true}).focus();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(expand).toBeFocused();
+  }
+});
+
 test('настроенная база видна на карте и замыкает оба учебных маршрута',async({page})=>{
   const base={base_lat:55.75,base_lon:37.6,base_address:'Учебная производственная база'};
   await page.route('**/api/config',async route=>{

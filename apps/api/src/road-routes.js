@@ -54,7 +54,8 @@ function readChunk(data,points,snapMeters){
   if(data.waypoints.some((p,i)=>distanceMeters(points[i],p.location)>snapMeters)){
     throw new RouteFailure('Дорога находится далеко от указанной точки. Уточните место подъезда.');
   }
-  return {geometry:line,distance_m:route.distance,duration_s:route.duration,
+  const approaches=data.waypoints.flatMap(({location},i)=>distanceMeters(points[i],location)>=5?[[location,points[i]]]:[]);
+  return {geometry:line,distance_m:route.distance,duration_s:route.duration,approaches,
     legs:route.legs.map(leg=>({duration_s:leg.duration,distance_m:leg.distance}))};
 }
 
@@ -71,6 +72,7 @@ export function createRoadRouter(settings,{fetchImpl=fetch,now=Date.now,sleep=wa
     const path=points.map(p=>p.join(',')).join(';');
     const url=new URL(path,settings.url);
     url.search=new URLSearchParams({overview:'full',geometries:'geojson',steps:'false',alternatives:'false',generate_hints:'false',
+      continue_straight:'false',
       radiuses:points.map(()=>settings.snapMeters).join(';')}).toString();
     try{
       const response=await fetchImpl(url,{headers:{Accept:'application/json',
@@ -107,18 +109,20 @@ export function createRoadRouter(settings,{fetchImpl=fetch,now=Date.now,sleep=wa
   }
   async function build(points){
     const geometry={type:'LineString',coordinates:[]};
-    const legs=[];
+    const legs=[],breaks=[],approaches=new Map();
     let distance_m=0,duration_s=0;
     for(let i=0;i<points.length-1;i+=maxWaypoints-1){
       const chunk=await enqueue(points.slice(i,i+maxWaypoints));
       const last=geometry.coordinates.at(-1),first=chunk.geometry.coordinates[0];
       const start=last && last[0]===first[0] && last[1]===first[1]?1:0;
+      if(last&&!start)breaks.push(geometry.coordinates.length);
       for(let j=start;j<chunk.geometry.coordinates.length;j++)geometry.coordinates.push(chunk.geometry.coordinates[j]);
+      for(const approach of chunk.approaches)approaches.set(JSON.stringify(approach),approach);
       legs.push(...chunk.legs);
       distance_m+=chunk.distance_m;
       duration_s+=chunk.duration_s;
     }
-    return {geometry,legs,distance_m,duration_s};
+    return {geometry,legs,distance_m,duration_s,breaks,approaches:[...approaches.values()]};
   }
   async function load(points){
     const key=JSON.stringify(points),entry=cache.get(key);

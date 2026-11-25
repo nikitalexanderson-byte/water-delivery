@@ -5,6 +5,7 @@ import {dayView,audit} from './day.js';
 import {calendar} from './config.js';
 import {planOrders,shiftSchedule} from './routing.js';
 import {orderLines,saveLines} from './products.js';
+import {currentLocations} from './tracking.js';
 
 function consentDate(data,config,now){
   if(!data.can_deliver_today)return null;
@@ -37,12 +38,14 @@ export async function createOrder(tx,user,data,config,now){
   return result;
 }
 
-async function routeTrips(tx,trips,orders){
+async function routeTrips(tx,trips,orders,locations=[]){
   const active=trips.filter(trip=>trip.status==='active').map(trip=>trip.id);
   const last=active.length?await rows(tx,`SELECT DISTINCT ON (o.trip_id) o.trip_id,o.longitude,o.latitude
     FROM orders o JOIN audit a ON a.entity_id=o.id AND a.event IN ('order.delivered','order.failed')
     WHERE o.trip_id=ANY($1::int[]) ORDER BY o.trip_id,a.id DESC`,[active]):[];
-  return trips.map(trip=>({...trip,last_visit:last.find(visit=>visit.trip_id===trip.id),
+  const origins=new Map(locations.filter(point=>!point.stale&&point.accuracy<=100)
+    .map(point=>[point.trip_id,{latitude:point.lat,longitude:point.lon}]));
+  return trips.map(trip=>({...trip,last_visit:last.find(visit=>visit.trip_id===trip.id),live_origin:origins.get(trip.id),
     stops:orders.filter(o=>o.trip_id===trip.id && o.origin==='office')}));
 }
 
@@ -83,10 +86,26 @@ export async function refreshShiftPlan(tx,shiftId,config,now,checkLimits=true,re
   await persistPlans(tx,trips,result.timetable,config);
 }
 
+export async function suggestAssignments(tx,user,date,config,now){
+  const {today,minute}=calendar(config,now);
+  ensure(date===today,'Подбор по геопозиции доступен на сегодня');
+  const day=await dayView(tx,user,date,config,now,{includeCustomers:false});
+  if(!day.smart_routing_enabled)return {suggestions:[],unassigned:[]};
+  const orders=day.orders.filter(order=>order.status==='pending');
+  if(!orders.length)return {suggestions:[],unassigned:[]};
+  const locations=await currentLocations(tx,user,date,now);
+  const trips=await routeTrips(tx,day.trips,day.orders,locations);
+  const {suggestions,unassigned}=planOrders({orders,shifts:day.shifts,trips,settings:config.routing,
+    nowMin:minute,allowActive:true,smart:true});
+  return {suggestions,unassigned};
+}
+
 export async function allocate(tx,user,input,config,now){
   const {today,minute}=calendar(config,now);
   ensure(input.date>=today,'Нельзя распределить заказы на прошедший день');
   const day=await dayView(tx,user,input.date,config,now,{includeCustomers:false});
+  const smart=input.suggested_trip!=null;
+  if(smart)ensure(input.date===today&&day.smart_routing_enabled,'Обновите предложение. Умный подбор отключён или дата изменилась.');
   if(input.shift_id)ensure(day.shifts.some(s=>s.id===input.shift_id),'Смена не найдена на выбранную дату',404);
   let queue=day.orders.filter(o=>o.status==='pending');
   let source;
@@ -94,6 +113,7 @@ export async function allocate(tx,user,input,config,now){
     const order=day.orders.find(o=>o.id===input.order_id);
     ensure(order,'Заказ не найден на выбранную дату',404);
     ensure(['pending','assigned'].includes(order.status),'Этот заказ нельзя назначить на рейс');
+    if(smart)ensure(order.status==='pending','Заказ уже назначен. Обновите очередь.');
     if(order.status==='assigned' || input.version!==undefined){
       ensure(order.version===input.version,'Версия заказа изменилась. Обновите список и повторите назначение');
     }
@@ -108,8 +128,11 @@ export async function allocate(tx,user,input,config,now){
   // назначения, версии и ETA исходного маршрута остаются прежними.
   const shifts=input.shift_id?day.shifts.filter(s=>s.id===input.shift_id):day.shifts;
   const trips=input.shift_id?day.trips.filter(t=>t.shift_id===input.shift_id):day.trips;
-  const result=planOrders({orders:queue,shifts,trips:await routeTrips(tx,trips,day.orders),
-    settings:config.routing,targetShiftId:input.shift_id,nowMin:input.date===today?minute:0,allowActive:input.date===today&&!source});
+  const locations=smart?await currentLocations(tx,user,input.date,now):[];
+  const result=planOrders({orders:queue,shifts,trips:await routeTrips(tx,trips,day.orders,locations),
+    settings:config.routing,targetShiftId:input.shift_id,nowMin:input.date===today?minute:0,allowActive:input.date===today&&!source,
+    smart,targetTripNumber:input.suggested_trip});
+  if(smart)ensure(!result.unassigned.length,'Обновите предложение. '+(result.unassigned[0]?.reason||'Рейс больше недоступен.'));
   if(source && result.unassigned.length){
     ensure(false,'Переназначение невозможно. '+result.unassigned[0].reason);
   }

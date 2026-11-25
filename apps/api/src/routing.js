@@ -63,7 +63,7 @@ function schedule(shift, trips, rules, map, nowMin, checkLimits = true) {
     // Для выехавшей машины отсчёт от последнего подтверждённого адреса.
     // До первой отметки последним известным местом считается база.
     let time = Math.max(trip.actual_start ?? available, nowMin);
-    let previous = active ? trip.last_visit ?? trip.stops.findLast(completed) ?? BASE : BASE;
+    let previous = active ? trip.live_origin ?? trip.last_visit ?? trip.stops.findLast(completed) ?? BASE : BASE;
     const validate = checkLimits && (!active || trip.extended);
     let bottles = 0;
     const stops = [];
@@ -144,7 +144,7 @@ function reserveStock(trip, order) {
   return { freeStock: free };
 }
 
-function* candidates(shift, trips, order, rules, map, nowMin, reasons, allowActive) {
+function* candidates(shift, trips, order, rules, map, nowMin, reasons, {allowActive,smart,targetTripNumber}) {
   const issue = vehicleIssue(order, shift);
   if (issue) {
     reasons.add(issue);
@@ -164,11 +164,12 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons, allowActi
     : trips;
 
   for (const [index, trip] of templates.entries()) {
+    if (targetTripNumber != null && trip.number !== targetTripNumber) continue;
     const active = trip.status === 'active' && allowActive;
     if (!active && trip.status !== 'planned') continue;
     const stock = active ? reserveStock(trip, order) : {};
     if (stock.issue) { reasons.add(stock.issue); continue; }
-    const first = active ? trip.stops.findLastIndex(completed) + 1 : 0;
+    const first = active ? trip.stops.findLastIndex(stop=>completed(stop)||(smart&&stop.arrived_at)) + 1 : 0;
     for (let position = first; position <= trip.stops.length; position++) {
       const revisedTrip = { ...trip, ...stock, extended: active, stops: insertAt(trip.stops, position, order) };
       const revised = [...trips];
@@ -182,18 +183,27 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons, allowActi
       let scheduleChange = 0;
       for (const route of result.timetable) {
         for (const stop of route.stops) {
-          if (priorEtas.has(stop.order_id)) scheduleChange += Math.abs(stop.eta - priorEtas.get(stop.order_id));
+          if (priorEtas.has(stop.order_id)) {
+            const change = stop.eta - priorEtas.get(stop.order_id);
+            scheduleChange += smart ? Math.max(0, change) : Math.abs(change);
+          }
         }
       }
       const extraReload = index === trips.length && index > 0 ? rules.reloadMinutes : 0;
       // Сначала минимизируем дополнительные переезды и погрузку. Затем выбираем
       // меньшую задержку конца смены, меньшую занятость водителя и более ранний ETA.
-      const score = [result.driving - baseline.driving + extraReload, result.finish - baseline.finish,
-        (result.finish - shift.start_min) / Math.max(1, shift.end_min - shift.start_min),
-        scheduleChange, eta, shift.id, trip.number, position];
+      const extraDriving = result.driving - baseline.driving;
+      const utilization = (result.finish - shift.start_min) / Math.max(1, shift.end_min - shift.start_min);
+      const score = smart
+        ? [extraDriving + extraReload + scheduleChange * 0.25 + Math.max(0, eta - Math.max(nowMin, order.window_start)) * 0.35,
+            scheduleChange, eta, utilization, shift.id, trip.number, position]
+        : [extraDriving + extraReload, result.finish - baseline.finish, utilization,
+            scheduleChange, eta, shift.id, trip.number, position];
       const timetable = result.timetable.filter(row =>
         revised.some(t => t.number === row.number && (t.status === 'planned' || t.extended)));
-      yield { shiftId: shift.id, revised, timetable, score };
+      yield { shiftId: shift.id, revised, timetable, score,
+        suggestion: {order_id:order.id,version:order.version,shift_id:shift.id,trip_number:trip.number,eta,
+          extra_driving_minutes:extraDriving,uses_live_location:active&&Boolean(trip.live_origin)} };
     }
   }
   if (!addTrip && !trips.some(trip => trip.status === 'planned' || (allowActive && trip.status === 'active'))) {
@@ -206,7 +216,8 @@ function* candidates(shift, trips, order, rules, map, nowMin, reasons, allowActi
  * очереди, в trips[].stops — уже закреплённые. Результат содержит полные планы
  * открытых рейсов, в том числе прежние точки. Исходные объекты не изменяются.
  */
-export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId, nowMin = 0, mapProvider, allowActive = false }) {
+export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId, nowMin = 0, mapProvider,
+  allowActive = false, smart = false, targetTripNumber }) {
   const rules = { ...demoRoutingDefaults, ...settings };
   const map = mapProvider ?? rules.mapProvider ?? demoMapProvider(rules.legMinutes);
   const byShift = new Map();
@@ -227,6 +238,7 @@ export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId
   const eligible = shifts.filter(shift => ['confirmed', 'active'].includes(shift.status)
     && (targetShiftId == null || shift.id === targetShiftId));
   const unassigned = [];
+  const suggestions = [];
   const queue = [...orders].sort((a, b) =>
     a.window_end - b.window_end || a.window_start - b.window_start || a.id - b.id);
   for (const order of queue) {
@@ -235,18 +247,23 @@ export function planOrders({ orders, shifts, trips, settings = {}, targetShiftId
     const reasons = new Set();
     let best;
     for (const shift of eligible) {
-      for (const option of candidates(shift, byShift.get(shift.id), order, rules, map, nowMin, reasons, allowActive)) {
+      for (const option of candidates(shift, byShift.get(shift.id), order, rules, map, nowMin, reasons,
+        {allowActive,smart,targetTripNumber})) {
         if (!best || betterScore(option.score, best.score)) best = option;
       }
     }
     if (best) {
       byShift.set(best.shiftId, best.revised);
       timetable.set(best.shiftId, best.timetable);
+      if (smart) suggestions.push(best.suggestion);
     } else {
       if (!eligible.length) reasons.add(targetShiftId == null
         ? 'Нет подтверждённых смен' : 'Выбранная смена недоступна для планирования');
       unassigned.push({ order_id: order.id, reason: [...reasons].join('. ') });
     }
   }
-  return { trips: [...timetable.values()].flat(), unassigned };
+  const planned=[...timetable.values()].flat();
+  if (!smart) return {trips:planned,unassigned};
+  const etas=new Map(planned.flatMap(trip=>trip.stops.map(stop=>[stop.order_id,stop.eta])));
+  return {trips:planned,unassigned,suggestions:suggestions.map(item=>({...item,eta:etas.get(item.order_id)}))};
 }

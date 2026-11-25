@@ -76,6 +76,15 @@ test('Срочный заказ вставляется перед закрепл
   assert.deepEqual(trips, frozen);
 });
 
+test('Умный подбор не вставляет новый заказ перед точкой, на которую водитель уже прибыл', () => {
+  const servicing=order(1,{arrived_at:'2026-11-25T10:00:00Z',status:'assigned',position:1,eta:620});
+  const trip={shift_id:1,number:1,status:'active',actual_start:600,stops:[servicing],
+    stock_items:[{product_id:1,water_left:10,reserved_water:5}]};
+  const incoming=order(2,{items:[{product_id:1,water:5}]});
+  const options={trips:[trip],orders:[incoming],smart:true,allowActive:true,targetTripNumber:1,nowMin:600};
+  assert.deepEqual(ids(run(options).trips[0]),[1,2]);
+});
+
 test('Вставка в первый рейс не срывает ранее назначенное окно второго', () => {
   const trips = [
     { shift_id: 1, number: 1, status: 'planned', stops: [order(1, { eta: 490, position: 1 })] },

@@ -1,5 +1,5 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
-import {Icon,Empty} from './ui';
+import {Icon,Empty,Dialog} from './ui';
 import {minuteText} from './api';
 import {RoadLeg,RoadSummary,useRoadRoutes} from './RoadRoutes';
 import exampleTrips from '../../../packages/route-map/static/route-map/example.json';
@@ -25,12 +25,21 @@ function routeLinks(trip,base){
   return links;
 }
 
-function MapFrame({payload,select}){
+function MapFrame({payload,select,onEscape}){
   const frame=useRef(null);
   const [loaded,setLoaded]=useState(false);
   useEffect(()=>{
     if(loaded)frame.current?.contentWindow?.FarvaterMap?.render(payload);
   },[payload,loaded]);
+  useEffect(()=>{
+    if(!loaded||!onEscape)return;
+    const view=frame.current?.contentWindow;
+    function close(event){
+      if(event.key==='Escape'&&!event.defaultPrevented)onEscape();
+    }
+    view?.addEventListener('keydown',close);
+    return ()=>view?.removeEventListener('keydown',close);
+  },[loaded,onEscape]);
   useEffect(()=>{
     function onMessage(event){
       if(event.origin!==window.location.origin||event.source!==frame.current?.contentWindow||event.data?.type!=='farvater:stop')return;
@@ -95,6 +104,8 @@ export function RouteAtlas({day,date,config,get,onOpen,demo,setDemo}){
   const [locatedAt,setLocatedAt]=useState(null);
   const [only,setOnly]=useState(false);
   const [listShown,setListShown]=useState(true);
+  const [expanded,setExpanded]=useState(false);
+  const closeMap=useCallback(()=>setExpanded(false),[]);
   const [theme,setTheme]=useState(document.documentElement.dataset.theme||'light');
   useEffect(()=>{
     const observer=new MutationObserver(()=>setTheme(document.documentElement.dataset.theme||'light'));
@@ -191,7 +202,14 @@ export function RouteAtlas({day,date,config,get,onOpen,demo,setDemo}){
             <small>{!links.length?'Для маршрута в Яндекс Картах укажите координаты остановок.':
               !validPoint(base)?'В ссылку входят только остановки. Координаты базы не заданы.':'Маршрут начинается и заканчивается на базе.'}</small></div>
         </aside>}
-        <MapFrame payload={payload} select={choosePoint}/>
+        <div className="atlas-map">
+          <div className="atlas-map-tools"><button type="button" aria-expanded={expanded} onClick={()=>setExpanded(true)}>
+            <Icon name="expand"/>На весь экран
+          </button></div>
+          {expanded?<Dialog className="atlas-fullscreen" title="Карта рейсов" close={closeMap}>
+            <MapFrame payload={payload} select={choosePoint} onEscape={closeMap}/>
+          </Dialog>:<MapFrame payload={payload} select={choosePoint}/>}
+        </div>
       </div>
   </section>;
 }

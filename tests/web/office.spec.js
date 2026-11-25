@@ -10,6 +10,43 @@ async function login(page,role) {
   await expect(page.getByRole('heading',{name:'Заказы на день'})).toBeVisible();
 }
 
+test('оператор включает умный подбор, видит предложение и подтверждает назначение',async({page,request})=>{
+  const session=async role=>(await request.post('/api/login',{data:{email:role+'@farvater.test',password}})).json();
+  const manager=await session('manager');
+  const driver=await session('driver1');
+  const headers={Authorization:'Bearer '+manager.token};
+  const driverHeaders={Authorization:'Bearer '+driver.token};
+  const {today}=await (await request.get('/api/config')).json();
+  const driverDay=await (await request.get('/api/day?date='+today,{headers:driverHeaders})).json();
+  const available=driverDay.shifts.find(s=>s.status==='pending');
+  if(available) expect((await request.post('/api/shifts/'+available.id+'/confirm',{headers:driverHeaders,data:{}})).ok()).toBeTruthy();
+  const response=await request.post('/api/orders',{headers,data:{date:today,name:'Учебный умный подбор',
+    phone:'+70000000434',address:'Учебная улица, 101',window_start:540,window_end:1020,water:1,water_price:35000,
+    category:'retail',payment_method:'cash',address_verified:true}});
+  expect(response.ok()).toBeTruthy();
+  const order=await response.json();
+  await login(page,'operator');
+  await page.getByRole('button',{name:'Маршруты',exact:true}).click();
+  const smart=page.getByRole('switch',{name:'Умный подбор по геопозиции'});
+  await expect(smart).not.toBeChecked();
+  await smart.check();
+  const row=page.locator('.queue-row').filter({hasText:'Учебный умный подбор'});
+  await expect(row.getByText('По плану смены')).toBeVisible();
+  const saved=page.waitForResponse(r=>r.url().endsWith('/api/plan')&&r.request().method()==='POST');
+  await row.getByRole('button',{name:'Подтвердить',exact:true}).click();
+  const applied=await saved;
+  expect(applied.ok()).toBeTruthy();
+  expect(applied.request().postDataJSON()).toMatchObject({order_id:order.id,suggested_trip:expect.any(Number)});
+  await expect(row).toHaveCount(0);
+  const updated=await (await request.get('/api/day?date='+today,{headers})).json();
+  const assigned=updated.orders.find(item=>item.id===order.id);
+  expect((await request.post('/api/orders/'+order.id+'/cancel',{headers,data:{version:assigned.version}})).ok()).toBeTruthy();
+  await smart.uncheck();
+  await expect(smart).toBeEnabled();
+  await page.reload();
+  await expect(smart).not.toBeChecked();
+});
+
 test('приём вечернего заказа, проверка адреса, ручное назначение и дневная выгрузка',async({page,request})=>{
   const config=await (await request.get('/api/config')).json();
   const driver=await (await request.post('/api/login',{data:{email:'driver2@farvater.test',password}})).json();

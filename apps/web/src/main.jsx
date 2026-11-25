@@ -133,7 +133,7 @@ function Workspace({session,exit,theme,toggle}) {
   {!day&&!error&&<p role="status">Загружаем данные дня…</p>}
   {day&&tab==='orders'&&<Journal day={day} onOpen={id=>setDialog({kind:'order',id})} onRoutes={()=>navigate(user.role==='driver'?'atlas':'routes')}/>}
   {day&&tab==='customers'&&editable&&<Customers get={get} onRepeat={previous=>setDialog({kind:'new',previous})}/>}
-  {day&&tab==='routes'&&<Dispatch key={date} day={day} date={date} config={config} canPlan={canPlan} send={send} refresh={refresh} onOpen={id=>setDialog({kind:'order',id})}/>}
+  {day&&tab==='routes'&&<Dispatch key={date} day={day} date={date} config={config} canPlan={canPlan} get={get} send={send} refresh={refresh} onOpen={id=>setDialog({kind:'order',id})}/>}
   {day&&tab==='atlas'&&<React.Suspense fallback={<p role="status">Открываем карту рейсов…</p>}><RouteAtlas key={date+':'+demo} day={day} date={date} config={config} get={get} demo={demo} setDemo={next=>navigate('atlas',next)} onOpen={id=>setDialog({kind:'order',id})}/></React.Suspense>}
   {day&&tab==='report'&&<Reports key={date} reports={day.reports} date={date} send={send} download={path=>response(path,{csv:true})} refresh={refresh}/>}
   {day&&tab==='catalog'&&<Catalog products={day.products||[]} canEdit={administrator} edit={product=>setDialog({kind:'product',product})}/>}

@@ -1,33 +1,70 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {Empty, Icon} from './ui';
 import {minuteText, shiftStates, tripStates} from './api';
 
-function PendingOrder({order,shifts,onAssign,onOpen,canPlan,working}) {
+function PendingOrder({order,shifts,onAssign,onOpen,canPlan,working,suggestion,reason}) {
   const [shiftId,setShiftId]=useState('');
   const eligible=shifts.filter(s=>s.status==='confirmed'||s.status==='active');
+  const crew=eligible.find(shift=>shift.id===suggestion?.shift_id);
+  const extra=suggestion?.extra_driving_minutes;
   return <div className="queue-row"><div><button className="link-button" onClick={()=>onOpen(order.id)}>№ {order.id} · {order.name}</button>
     <small>{order.address} · {minuteText(order.window_start)}–{minuteText(order.window_end)} · <span className="measure">{order.water} бут.</span></small>
     {order.reason && <small className="reason">{order.reason}</small>}
     {!order.address_verified && !order.reason && <small className="reason">Адрес ожидает подтверждения</small>}
-  </div>{canPlan&&eligible.length>0&&<form className="actions" onSubmit={e=>{e.preventDefault();onAssign(order.id,Number(shiftId),order.version);}}>
+  </div>{crew&&<div className="smart-suggestion">
+    <div><strong>{crew.driver_name} · рейс {suggestion.trip_number}</strong>
+      <small>Прибытие около <b>{minuteText(suggestion.eta)}</b> · {extra<0?'на '+Math.abs(extra)+' мин меньше в пути':extra>0?'+'+extra+' мин в пути':'без лишнего переезда'}</small>
+      <small>{suggestion.uses_live_location?'С учётом геопозиции':'По плану смены'}</small></div>
+    <button type="button" disabled={working} onClick={()=>onAssign(order.id,crew.id,order.version,suggestion.trip_number)}>Подтвердить</button>
+  </div>}{reason&&!order.reason&&order.address_verified&&<small className="reason">{reason}</small>}
+  {canPlan&&eligible.length>0&&<form className="actions" onSubmit={e=>{e.preventDefault();onAssign(order.id,Number(shiftId),order.version);}}>
     <label><span className="sr-only">{'Смена для заказа №'+order.id}</span><select value={shiftId} onChange={e=>setShiftId(e.target.value)} required><option value="">Выбрать смену</option>{eligible.map(s=><option value={s.id} key={s.id}>{s.driver_name}</option>)}</select></label>
     <button type="submit" disabled={!shiftId||working}>Назначить</button>
   </form>}</div>;
 }
 
-export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
+export function Dispatch({day,date,config,canPlan,get,send,refresh,onOpen}) {
   const [selectedId,select]=useState(null);
   const [message,setMessage]=useState('');
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
+  const [smart,setSmart]=useState(Boolean(day.smart_routing_enabled));
+  const [desiredSmart,setDesiredSmart]=useState(null);
+  const [preview,setPreview]=useState(null);
+  const [previewError,setPreviewError]=useState('');
   const {orders,shifts,trips}=day;
   const queue=orders.filter(o=>o.status==='pending');
+  const smartToday=canPlan&&date===config.today;
+  useEffect(()=>{setSmart(Boolean(day.smart_routing_enabled));},[day.smart_routing_enabled]);
+  useEffect(()=>{
+    if(!smartToday||!smart||!day.orders.some(order=>order.status==='pending')){
+      setPreview(null);setPreviewError('');
+      return;
+    }
+    const request=new AbortController();
+    get('/plan-suggestions?date='+date,request.signal).then(result=>{
+      if(!request.signal.aborted){setPreview(result);setPreviewError('');}
+    }).catch(err=>{
+      if(!request.signal.aborted){setPreview(null);setPreviewError(err.message);}
+    });
+    return ()=>request.abort();
+  },[date,day,get,smart,smartToday]);
+  const suggestions=new Map((smartToday&&smart?preview?.suggestions??[]:[]).map(item=>[item.order_id,item]));
+  const reasons=new Map((smartToday&&smart?preview?.unassigned??[]:[]).map(item=>[item.order_id,item.reason]));
   const shift=shifts.find(s=>s.id===selectedId)||shifts[0];
   const shiftTrips=trips.filter(t=>t.shift_id===shift?.id).sort((a,b)=>a.number-b.number);
-  async function plan(orderId,shiftId,version) {
+  async function changeSmart(enabled) {
+    setError('');setBusy(true);setDesiredSmart(enabled);
+    try {
+      await send('/routing-preferences',{enabled},'PATCH');
+      setSmart(enabled);refresh();
+    }catch(err){setError(err.message);}finally{setDesiredSmart(null);setBusy(false);}
+  }
+  async function plan(orderId,shiftId,version,suggestedTrip) {
     setError('');setMessage('');setBusy(true);
     try {
-      const result=await send('/plan',{date,...(orderId?{order_id:orderId,shift_id:shiftId,version}:{})});
+      const result=await send('/plan',{date,...(orderId?{order_id:orderId,shift_id:shiftId,version}:{}),
+        ...(suggestedTrip?{suggested_trip:suggestedTrip}:{})});
       const left=result.unassigned||[];
       const message='Назначено заказов: '+result.assigned+'. Осталось после подбора: '+left.length+'.';
       const source={yandex:'Время в пути рассчитано по прогнозу пробок Яндекса.',
@@ -73,8 +110,20 @@ export function Dispatch({day,date,config,canPlan,send,refresh,onOpen}) {
       })}<p className="model-note"><Icon name="time" size={14}/>Время прибытия включает дорогу, окно и обслуживание точки.</p></div>:<Empty title="Рейсы ещё не сформированы" detail="После распределения здесь появятся остановки и время прибытия."/>}
     </section>
     <section className="panel queue-panel" id="dispatch-queue"><div className="panel-head"><div><h2>Очередь распределения <span>{queue.length}</span></h2>{problems>0&&<small>Требуют проверки · {problems}</small>}</div></div>
+    {smartToday&&<div className="smart-routing">
+      <label><span>Умный подбор по геопозиции</span>
+        <input type="checkbox" role="switch" checked={desiredSmart??smart} disabled={busy}
+          onChange={event=>changeSmart(event.target.checked)}/></label>
+      {smart&&<small>Предлагает экспедитора. Заказ назначается после подтверждения.</small>}
+      {smart&&queue.length>0&&previewError&&<p role="status" className="reason">{previewError}</p>}
+      {smart&&queue.length>0&&!preview&&!previewError&&<small role="status">Подбираем экспедиторов…</small>}
+    </div>}
     {canPlan&&<div className="plan-action"><button className="primary" disabled={!queue.length||busy} onClick={()=>plan()}><Icon name="routes"/>{busy?'Идёт подбор…':'Распределить заказы'}</button></div>}
-    {queue.length?<div className="queue">{queue.map(o=><PendingOrder key={o.id} order={o} shifts={shifts} onAssign={plan} onOpen={onOpen} canPlan={canPlan} working={busy}/>)}</div>:<Empty title="Все заказы обработаны"/>}
+    {queue.length?<div className="queue">{queue.map(o=>{
+      const suggestion=suggestions.get(o.id);
+      return <PendingOrder key={o.id} order={o} shifts={shifts} onAssign={plan} onOpen={onOpen} canPlan={canPlan}
+        working={busy} suggestion={suggestion?.version===o.version?suggestion:null} reason={reasons.get(o.id)}/>;
+    })}</div>:<Empty title="Все заказы обработаны"/>}
     {canPlan&&date===config.today&&day.early_orders?.length>0&&<section className="early-orders" aria-label="Можно доставить сегодня">
       <h3>Можно доставить сегодня</h3><p>Клиенты согласны на доставку раньше. Заказ перейдёт на сегодня, если для него найдётся рейс.</p>
       {day.early_orders.map(o=><div className="queue-row" key={o.id}><div><strong>№ {o.id} · {o.name}</strong><small>{o.address}</small>

@@ -74,7 +74,8 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
             Text("Учебный маршрут")
         }
     }
-    published.firstOrNull { it.status == "active" }?.let { TrackingPanel(it.id, sharing) }
+    val activeTrip = published.firstOrNull { it.status == "active" }
+    if (!mapped) activeTrip?.let { TrackingPanel(it.id, sharing) }
     if (published.size > 1)
         Row(
             Modifier.horizontalScroll(rememberScrollState()),
@@ -137,6 +138,7 @@ internal fun RouteView(day: Day?, task: ShiftFocus?, base: MapBase, repository: 
                 .put("locationRequest", request)
             RouteMap(payload.toString(), base.tiles, phones)
         }
+        activeTrip?.let { TrackingPanel(it.id, sharing) }
         RoadSummary(roads, base.label)
         val trip = shown.singleOrNull()
         if (trip != null) {

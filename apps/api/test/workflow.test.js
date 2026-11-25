@@ -204,6 +204,67 @@ test('Срочное назначение сохраняет факты рейс
     for(const id of [a.id,b.id])assert.deepEqual(lookup(settled,id),lookup(afterOutcomes,id));
   }finally{now=initial;}
 });
+test('Умный подбор учитывает свежую геопозицию и проверяет запас заново при подтверждении',async()=>{
+  const saved=now;
+  now=new Date(localTime('12:00').getTime()+99*86400000);
+  const {today:date}=calendar(config,now);
+  const preference=enabled=>success(http('PATCH','/routing-preferences','operator',{enabled}));
+  const preview=(role='operator')=>http('GET','/plan-suggestions?date='+date,role);
+  try{
+    const {vehicles}=await success(http('GET','/resources','operator'));
+    const crews=[];
+    const create=fields=>post('operator','/orders',{...details(date),water:1,new_shells:0,
+      latitude:55.55,longitude:37.55,window_end:840,...fields});
+    for(const [index,driver] of ['driver1','driver2'].entries()){
+      const {id:shift}=await post('operator','/shifts',{date,vehicle_id:vehicles[index].id,driver_id:accounts[driver].user.id,
+        start_min:600,end_min:870,has_loader:false});
+      await post(driver,`/shifts/${shift}/confirm`,{});
+      const {id:stop}=await create({latitude:55.56});
+      await post('operator','/plan',{date,order_id:stop,shift_id:shift});
+      const [trip]=(await day(driver,date)).trips;
+      await post(driver,`/trips/${trip.id}/start`,{actual_start:720,water:2});
+      crews.push({shift,trip:trip.id,driver,stop});
+    }
+    const location=(crew,lat,accuracy=12)=>post(crew.driver,`/trips/${crew.trip}/location`,{
+      lat,lon:37.55,accuracy,bearing:null,observed_at:now.toISOString()});
+    await location(crews[0],55.62);
+    await location(crews[1],55.55);
+    const {id}=await create({});
+    assert.deepEqual(await success(preview()),{suggestions:[],unassigned:[]});
+    assert.equal((await preview('driver1')).status,403);
+    await preference(true);
+    const pick=async()=>(await success(preview())).suggestions.find(item=>item.order_id===id);
+    let suggestion=await pick();
+    assert.equal(suggestion.shift_id,crews[1].shift);
+    assert.equal(suggestion.uses_live_location,true);
+    assert.equal((await day('operator',date)).orders.find(o=>o.id===id).status,'pending');
+    now=new Date(+now+46_000);
+    assert.equal((await pick()).uses_live_location,false);
+    await location(crews[1],55.55,500);
+    assert.equal((await pick()).uses_live_location,false);
+    now=new Date(+now+1000);
+    await location(crews[1],55.55);
+    suggestion=await pick();
+    const confirm=item=>http('POST','/plan','operator',{date,order_id:id,shift_id:item.shift_id,
+      version:item.version,suggested_trip:item.trip_number},randomUUID());
+    await post('driver2',`/trips/${crews[1].trip}/sale`,{customer_order_id:crews[1].stop,water:1,water_price:19000,
+      new_shells:0,empty:0,paid:true,payment_method:'cash'});
+    assert.equal((await confirm(suggestion)).status,409);
+    assert.equal((await day('operator',date)).orders.find(o=>o.id===id).status,'pending');
+    await preference(false);
+    assert.equal((await confirm(suggestion)).status,409);
+    await preference(true);
+    await location(crews[0],55.62);
+    const replacement=await pick();
+    assert.equal(replacement.shift_id,crews[0].shift);
+    assert.equal((await success(confirm(replacement))).assigned,1);
+    assert.equal((await day('operator',date)).orders.find(o=>o.id===id).trip_id,crews[0].trip);
+  }finally{
+    await preference(false);
+    now=saved;
+  }
+});
+
 test('Дорожный путь рабочего рейса доступен офису и только назначенному водителю после публикации',async()=>{
   const initial=now;
   const work=new Date(localTime('12:00').getTime()+55*86400000);

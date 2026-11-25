@@ -13,11 +13,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import java.io.ByteArrayInputStream
 import org.json.JSONObject
 
@@ -131,13 +135,40 @@ private class RouteMapClient(private val ctx: Context, private val failure: (Str
     }
 }
 
-@SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
 internal fun RouteMap(payload: String, tiles: Boolean, phones: Set<String>) {
-    var error by remember { mutableStateOf("") }
+    var expanded by rememberSaveable { mutableStateOf(false) }
     val height = (LocalConfiguration.current.screenHeightDp * 0.52f).coerceIn(240f, 490f).dp
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        TextButton(onClick = { expanded = true }, modifier = Modifier.heightIn(min = 48.dp)) {
+            Text("На весь экран")
+        }
+    }
+    if (expanded) {
+        Dialog(onDismissRequest = { expanded = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(Modifier.fillMaxSize()) {
+                Column {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { expanded = false }) { Symbol(Mark.Back, "Свернуть карту") }
+                        Heading("Карта рейсов")
+                    }
+                    RouteMapView(payload, tiles, phones, Modifier.fillMaxWidth().weight(1f))
+                }
+            }
+        }
+    } else {
+        RouteMapView(payload, tiles, phones, Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(16.dp)))
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
+@Composable
+private fun RouteMapView(payload: String, tiles: Boolean, phones: Set<String>, modifier: Modifier) {
+    var error by remember { mutableStateOf("") }
+    Column(modifier) {
     AndroidView(
-        modifier = Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(16.dp)),
+        modifier = Modifier.fillMaxWidth().weight(1f),
         factory = { ctx ->
             val client = RouteMapClient(ctx) { error = it }
             WebView(ctx).apply {
@@ -184,4 +215,5 @@ internal fun RouteMap(payload: String, tiles: Boolean, phones: Set<String>) {
         },
     )
     if (error.isNotEmpty()) Feedback(error, true)
+    }
 }

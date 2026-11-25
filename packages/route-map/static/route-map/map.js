@@ -76,7 +76,7 @@
   }
   function line(points,color,emphasis,roadId){
     if(points.length<2)return;
-    const pane={interactive:false,smoothFactor:1};
+    const pane={interactive:false,smoothFactor:roadId==null?1:0,lineJoin:roadId==null?'round':'bevel'};
     const weight=emphasis?5:3;
     const group=roadId==null?layers:roadLayers;
     L.polyline(points,{...pane,color:data.theme==='dark'?'#152630':'white',weight:weight+3,opacity:.9}).addTo(group);
@@ -97,7 +97,18 @@
       const path=coords.map(([lon,lat])=>[lat,lon]);
       const bounds=L.latLngBounds(path);
       roadBounds.push(bounds.getSouthWest(),bounds.getNorthEast());
-      line(path,palette[Math.abs(trip.colorIndex??i)%palette.length],data.trips.length===1||trip.id===data.activeTripId,trip.id);
+      const color=palette[Math.abs(trip.colorIndex??i)%palette.length];
+      const emphasis=data.trips.length===1||trip.id===data.activeTripId;
+      let start=0;
+      for(const end of [...(result.breaks??[]),path.length]){
+        line(path.slice(start,end),color,emphasis,trip.id);
+        start=end;
+      }
+      for(const approach of result.approaches??[]){
+        if(!Array.isArray(approach)||approach.length!==2||!approach.every(pair=>Array.isArray(pair)&&hasPoint({lon:pair[0],lat:pair[1]})))continue;
+        L.polyline(approach.map(([lon,lat])=>[lat,lon]),{color,weight:2,dashArray:'3 5',smoothFactor:0,
+          interactive:false,className:'road-approach'}).addTo(roadLayers);
+      }
     }
     if(creditedRoads!==Boolean(roadBounds.length)){
       creditedRoads=Boolean(roadBounds.length);
@@ -189,6 +200,7 @@
     }
     else{
       if(stops.length)notes.push(data.trips.some(t=>data.roads?.[t.id]?.status==='ready')?'Автомобильный маршрут · без текущих пробок':'Остановки рейсов');
+      if(data.trips.some(t=>data.roads?.[t.id]?.approaches?.length))notes.push('пунктир — от дороги до отметки');
       else if(!hasPoint(data.location)&&!hasPoint(data.base))notes.push('Обзор Московского региона');
       if(!hasPoint(data.base))notes.push('координаты базы не заданы');
       if(unknown)notes.push('без координат: '+unknown);
@@ -243,7 +255,7 @@
       }
       drawTrips();sceneKey=key;
     }
-    const nextRoadKey=mode==='geo'?JSON.stringify(data.trips.map(t=>data.roads?.[t.id]?.geometry??null)):'';
+    const nextRoadKey=mode==='geo'?JSON.stringify(data.trips.map(t=>data.roads?.[t.id]??null)):'';
     const roadsChanged=roadKey!==nextRoadKey;
     if(roadsChanged||redraw){drawRoads();roadKey=nextRoadKey;}
     if(geometryChanged||force){followExtent=true;fit();}

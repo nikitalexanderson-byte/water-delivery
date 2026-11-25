@@ -38,6 +38,8 @@ test('Длинный рейс склеивается с одной общей т
     starts.push(now);assert.ok(options.headers['User-Agent'].includes('Farvater'));
     assert.equal(url.origin,'http://osrm.test');
     const body=mockRoute(url);
+    assert.equal(url.searchParams.get('continue_straight'),'false');
+    assert.equal(url.searchParams.get('overview'),'full');
     assert.equal(url.searchParams.get('radiuses').split(';').length,body.waypoints.length);
     chunks.push(body.waypoints.map(p=>p.location));
     return Response.json(body);
@@ -57,6 +59,20 @@ test('Длинный рейс склеивается с одной общей т
   const noBase=await route(points.slice(0,2),emptyBase);
   assert.equal(noBase.has_base,false);
   assert.deepEqual(noBase.legs,[{from_id:'1',to_id:'2',distance_m:423,duration_s:61.5}]);
+});
+
+test('Последние метры до сохранённой точки выделены отдельно от дороги и её времени',async()=>{
+  const route=createRoadRouter(settings,{fetchImpl:async url=>{
+    const data=mockRoute(url);
+    data.waypoints[1].location=[20.0004,10];
+    data.routes[0].geometry.coordinates[1]=data.waypoints[1].location;
+    return Response.json(data);
+  }});
+  const result=await route(stops(1),base);
+  assert.equal(result.status,'ready');
+  assert.deepEqual(result.approaches,[[[20.0004,10],[20,10]]]);
+  assert.equal(result.distance_m,846);
+  assert.equal(result.duration_s,123);
 });
 
 test('Неполные координаты, пропущенная геометрия, неудачная и слишком далёкая привязка не создают дорожный путь',async()=>{

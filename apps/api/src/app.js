@@ -10,7 +10,7 @@ import {orderArchive,orderCalendar} from './order-calendar.js';
 import {findCustomers,readCustomerHistory} from './customers.js';
 import {createPlaceSearch,PlaceSearchError} from './places.js';
 import {createRoadRouter,exampleStops,tripStops} from './road-routes.js';
-import {createOrder,allocate,changeOrder,bringForward,refreshShiftPlan} from './orders.js';
+import {createOrder,allocate,changeOrder,bringForward,refreshShiftPlan,suggestAssignments} from './orders.js';
 import {confirmShift,startTrip,arrive,deliver,returnTrip,settle} from './execution.js';
 import {reportCsv} from './csv.js';
 import {catalog,createProduct,editProduct} from './products.js';
@@ -305,6 +305,20 @@ export function createApp({db,config:settings,clock=()=>new Date(),placeFetch=fe
   for(const op of ['cancel','reschedule','verify-address']){
     action('/orders/:id/'+op,office,op==='reschedule'?v.move:v.version,(tx,u,b,r)=>changeOrder(tx,u,idOf(r),b,op,teamConfig(u),clock()));
   }
+  action('/routing-preferences',office,z.object({enabled:z.boolean()}),async(tx,user,{enabled})=>{
+    const changed=await one(tx,`UPDATE teams SET smart_routing_enabled=$2
+      WHERE id=$1 AND smart_routing_enabled IS DISTINCT FROM $2 RETURNING id`,[user.team_id,enabled]);
+    if(changed)await audit(tx,user,'routes.smart_routing_changed',user.team_id,{enabled});
+    return {enabled};
+  },{method:'patch'});
+  app.get('/api/plan-suggestions',async(req,res)=>{
+    ensure(office.includes(req.user.role),denied,403);
+    const date=v.date.parse(req.query.date);
+    res.json(await db.transaction(async tx=>{
+      await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      return suggestAssignments(tx,req.user,date,teamConfig(req.user),clock());
+    }));
+  });
   action('/plan',office,v.plan,async(tx,user,input,req,forecast)=>{
     const team=teamConfig(user);
     const routing=forecast&&forecastRouting(forecast,team);

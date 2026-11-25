@@ -23,6 +23,7 @@ const symbols = {
   customers:<><circle cx="9" cy="7.5" r="3.5"/><path d="M2 20v-2a7 7 0 0 1 14 0v2M16 4a3.5 3.5 0 0 1 0 7m2 2a6 6 0 0 1 4 6"/></>,
   calendar:<><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18"/></>,
   atlas:<><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3zM9 3v15M15 6v15"/></>,
+  expand:<path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/>,
 };
 export function Icon({ name, size = 18 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{symbols[name]}</svg>;
