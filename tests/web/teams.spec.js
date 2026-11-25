@@ -2,11 +2,13 @@ import {test,expect} from '@playwright/test';
 import {randomUUID} from 'node:crypto';
 
 test('экран входа показывает ссылку на APK, когда сервер раздаёт файл',async({page})=>{
-  await page.route('**/downloads/farvater-driver.apk',route=>route.fulfill({status:200,
+  await page.route('**/downloads/wayslate.apk',route=>route.fulfill({status:200,
     contentType:'application/vnd.android.package-archive',body:''}));
   await page.goto('/');
   await expect(page).toHaveTitle('WaySlate · Доставка воды');
-  await expect(page.getByRole('link',{name:'Скачать WaySlate для Android'})).toHaveAttribute('href','/downloads/farvater-driver.apk');
+  const download=page.getByRole('link',{name:'Скачать WaySlate для Android'});
+  await expect(download).toHaveAttribute('href','/downloads/wayslate.apk');
+  await expect(download).toHaveAttribute('download','wayslate.apk');
 });
 
 async function registrationForm(page,name,role){

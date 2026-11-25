@@ -76,7 +76,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$work/signing.keystore"
           unset KEYSTORE_BASE64
           sdk="$ANDROID_HOME/build-tools/36.1.0"
-          apk="$RUNNER_TEMP/farvater-driver.apk"
+          apk="$RUNNER_TEMP/wayslate.apk"
           install -d "$work/assets"
           printf '{"version_code":%s}\n' "$ANDROID_VERSION_CODE" > "$work/assets/farvater-release.json"
           cp apps/android/app/build/outputs/apk/release/app-release-unsigned.apk "$work/unsigned.apk"
@@ -91,8 +91,8 @@ jobs:
             --apk "$apk" --version-code "$ANDROID_VERSION_CODE"
       - uses: actions/upload-artifact@v4
         with:
-          name: farvater-driver-${{ inputs.target }}-${{ github.run_number }}
-          path: ${{ runner.temp }}/farvater-driver.apk
+          name: wayslate-${{ inputs.target }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/wayslate.apk
           if-no-files-found: error
 
   deploy:
@@ -107,7 +107,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: farvater-driver-${{ inputs.target }}-${{ github.run_number }}
+          name: wayslate-${{ inputs.target }}-${{ github.run_number }}
           path: ${{ runner.temp }}
       - name: Send release to the selected VPS
         env:
@@ -146,7 +146,7 @@ jobs:
           ssh -T -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$work/known_hosts" -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
             -o ForwardAgent=no -o ClearAllForwardings=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 \
-            "farvater-deploy@$DEPLOY_HOST" "$GITHUB_SHA" < "$RUNNER_TEMP/farvater-driver.apk"
+            "farvater-deploy@$DEPLOY_HOST" "$GITHUB_SHA" < "$RUNNER_TEMP/wayslate.apk"
       - name: Verify public health and APK
         run: |
           set -euo pipefail
@@ -156,8 +156,9 @@ jobs:
           curl --fail --silent --show-error --proto '=https' --connect-timeout 8 --max-time 12 \
             --retry 20 --retry-delay 5 --retry-all-errors --retry-max-time 150 \
             "$site/health/ready" | jq -e '.ok == true' > /dev/null
-          "${fetch[@]}" "$site/downloads/farvater-driver.apk" -o "$RUNNER_TEMP/served.apk"
-          cmp "$RUNNER_TEMP/farvater-driver.apk" "$RUNNER_TEMP/served.apk"
+          "${fetch[@]}" "$site/downloads/wayslate.apk" -D "$RUNNER_TEMP/apk-headers" -o "$RUNNER_TEMP/served.apk"
+          grep -iF 'content-disposition: attachment; filename=wayslate.apk' "$RUNNER_TEMP/apk-headers"
+          cmp "$RUNNER_TEMP/wayslate.apk" "$RUNNER_TEMP/served.apk"
           checksum=$(sha256sum "$RUNNER_TEMP/served.apk" | cut -d' ' -f1)
           bytes=$(wc -c < "$RUNNER_TEMP/served.apk")
           "${fetch[@]}" "$site/api/app-release" |

@@ -5,10 +5,13 @@
 		Permissions-Policy "geolocation=(self)"
 		-Server
 	}
-	handle /downloads/farvater-driver.apk {
+	@androidApk path /downloads/wayslate.apk /downloads/farvater-driver.apk
+	handle @androidApk {
+		# Previously installed apps download directly from the legacy URL.
+		rewrite * /downloads/farvater-driver.apk
 		root * /srv
 		header Content-Type application/vnd.android.package-archive
-		header Content-Disposition "attachment; filename=WaySlate.apk"
+		header Content-Disposition "attachment; filename=wayslate.apk"
 		header Cache-Control "no-cache"
 		file_server
 	}

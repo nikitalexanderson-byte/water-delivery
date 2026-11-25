@@ -16,7 +16,7 @@ $env:ANDROID_VERSION_CODE = '12'
 .\apps\android\build-local.ps1 -Release
 ```
 
-`/api/app-release` сообщает номер, размер и SHA-256 опубликованного файла. Проверить сертификат скачанного APK можно командой `apksigner verify --verbose --print-certs WaySlate.apk` из Android SDK Build Tools.
+`/api/app-release` сообщает номер, размер и SHA-256 опубликованного файла. Проверить сертификат скачанного APK можно командой `apksigner verify --verbose --print-certs wayslate.apk` из Android SDK Build Tools.
 
 ## Регистрация разработчика вне магазина
 

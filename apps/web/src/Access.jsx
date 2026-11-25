@@ -8,7 +8,7 @@ const registrationRoles={
   operator:{description:'Принимаю заказы и распределяю рейсы.',icon:'orders'},
 };
 
-const androidApk='/downloads/farvater-driver.apk';
+const androidApk='/downloads/wayslate.apk';
 
 function AccessLinks(){
   const [apkAvailable,setApkAvailable]=useState(false);
@@ -20,7 +20,7 @@ function AccessLinks(){
     return ()=>controller.abort();
   },[]);
   return <footer className="access-links">
-    {apkAvailable&&<a className="access-map" href={androidApk} download="WaySlate.apk"><Icon name="download"/>Скачать WaySlate для Android</a>}
+    {apkAvailable&&<a className="access-map" href={androidApk} download="wayslate.apk"><Icon name="download"/>Скачать WaySlate для Android</a>}
     <a className="access-map" href="/?public-map=1"><Icon name="atlas"/>Учебная карта · 2 рейса</a>
   </footer>;
 }

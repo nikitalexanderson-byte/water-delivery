@@ -95,7 +95,9 @@ jobs:
         run: |
           curl --retry 8 --retry-connrefused --retry-delay 1 -fsS http://localhost:19080/health/ready
           curl -fsS http://localhost:19080/route-map/example.json > /dev/null
-          curl -fsSI http://localhost:19080/downloads/farvater-driver.apk | grep -iF 'content-type: application/vnd.android.package-archive'
+          curl -fsSI http://localhost:19080/downloads/wayslate.apk | grep -iF 'content-type: application/vnd.android.package-archive'
+          curl -fsSI http://localhost:19080/downloads/wayslate.apk | grep -iF 'content-disposition: attachment; filename=wayslate.apk'
+          curl -fsS http://localhost:19080/downloads/wayslate.apk | cmp - downloads/farvater-driver.apk
           curl -fsS http://localhost:19080/downloads/farvater-driver.apk | cmp - downloads/farvater-driver.apk
           dump=$(bash deploy/backup.sh "$RUNNER_TEMP/farvater-backup")
           compose=(docker compose --env-file .env.vps -f deploy/compose.vps.yml)

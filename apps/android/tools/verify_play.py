@@ -56,7 +56,9 @@ def verify(bundletool, bundle, version):
             raise ValueError("Missing application bytecode")
         for name in bytecode:
             data = archive.read(name)
-            if any(marker in data for marker in (b"/downloads/farvater-driver.apk", b"Lru/farvater/driver/UpdateModel;")):
+            if any(marker in data for marker in (
+                b"/downloads/wayslate.apk", b"/downloads/farvater-driver.apk", b"Lru/farvater/driver/UpdateModel;",
+            )):
                 raise ValueError(f"Direct APK updater found in {name}")
     print(f"Verified Google Play bundle: ru.farvater.driver, version code {version}")
 

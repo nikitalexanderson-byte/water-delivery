@@ -106,7 +106,7 @@ private fun downloadApk(context: Context, release: UpdateRelease): File {
     if (!directory.isDirectory && !directory.mkdirs()) throw IOException("Update cache unavailable")
     val file = File.createTempFile("farvater-", ".apk", directory)
     try {
-        val connection = URL("${BuildConfig.API_URL}/downloads/farvater-driver.apk").openConnection() as HttpURLConnection
+        val connection = URL("${BuildConfig.API_URL}/downloads/wayslate.apk").openConnection() as HttpURLConnection
         val hash = MessageDigest.getInstance("SHA-256")
         var received = 0L
         try {
