@@ -69,6 +69,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 14
     env:
+      COMPOSE_BAKE: "false"
       SITE_ADDRESS: http://localhost
       VPS_BIND: 127.0.0.1
       VPS_HTTP_PORT: 19080
