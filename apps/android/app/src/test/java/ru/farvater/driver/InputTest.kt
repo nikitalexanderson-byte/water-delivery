@@ -44,6 +44,13 @@ class InputTest {
         assertNull(readRubles("999999999999999999999999"))
     }
 
+    @Test fun onSiteSaleAcceptsFreeWaterAndAppliesTheCatalogPriceLimit() {
+        assertEquals(0L, readSalePrice("0,00"))
+        assertEquals(10_000_000L, readSalePrice("100000"))
+        assertNull(readSalePrice("100000,01"))
+        assertNull(readSalePrice("-0,01"))
+    }
+
     @Test fun inventoryIsANonNegativeWholeCount() {
         assertEquals(0, readCount("0"))
         assertEquals(12, readCount("12"))

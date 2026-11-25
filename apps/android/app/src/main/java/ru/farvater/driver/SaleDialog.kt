@@ -15,6 +15,8 @@ internal fun newSaleCustomer(name: String, phone: String, address: String, categ
     return json("name" to name.trim(), "phone" to phoneText, "address" to address.trim(), "category" to category)
 }
 
+internal fun readSalePrice(value: String): Long? = readRubles(value)?.takeIf { it <= 10_000_000 }
+
 @Composable
 internal fun SaleDialog(
     stop: Stop?,
@@ -52,7 +54,7 @@ internal fun SaleDialog(
     val units = readCount(quantity)
     val newShells = readCount(shells)
     val collected = readCount(empty)
-    val unitPrice = readRubles(price)
+    val unitPrice = readSalePrice(price)
     val total =
         if (units != null && newShells != null && unitPrice != null && (newShells == 0 || shellPrice != null))
             runCatching {
@@ -77,7 +79,7 @@ internal fun SaleDialog(
                     newShells == null || newShells > units ->
                         "Количество новой тары превышает количество воды"
                     newShells > 0 && shellPrice == null -> "Обновите смену, чтобы загрузить цену тары"
-                    unitPrice == null || unitPrice !in 1..10_000_000 || total == null -> "Проверьте цену воды"
+                    unitPrice == null || total == null -> "Проверьте цену воды"
                     collected == null || collected > 10_000 -> "Проверьте количество принятой тары"
                     method == "bank" && company.isBlank() -> "Укажите название компании для безнала"
                     method == "bank" && company.trim().length > 200 -> "Сократите название компании до 200 символов"
