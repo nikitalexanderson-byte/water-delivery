@@ -16,7 +16,9 @@ services:
       retries: 15
 
   api:
-    build: ..
+    build:
+      context: ..
+      network: ${VPS_BUILD_NETWORK:-host}
     restart: unless-stopped
     environment:
       API_HOST: 0.0.0.0
