@@ -1,10 +1,16 @@
-name: Release staging
+name: Release WaySlate
+run-name: Release WaySlate to ${{ inputs.target }}
 
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'Среда выпуска'
+        type: choice
+        options: [staging, production]
+        default: staging
       build_only:
-        description: 'Собрать подписанный APK без выкладки на VPS'
+        description: 'Собрать подписанный APK для выбранной среды без выкладки'
         type: boolean
         default: false
 
@@ -12,28 +18,42 @@ permissions:
   contents: read
 
 concurrency:
-  group: farvater-staging-release
+  group: farvater-release-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: staging
     env:
-      ANDROID_API_URL: ${{ vars.STAGING_SITE_URL }}
       ANDROID_VERSION_CODE: ${{ github.run_number }}
+    outputs:
+      site_url: ${{ steps.origin.outputs.site_url }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Validate staging HTTPS origin
+      - name: Select the release HTTPS origin
+        id: origin
+        env:
+          TARGET: ${{ inputs.target }}
+          STAGING_SITE_URL: ${{ vars.STAGING_SITE_URL }}
+          PRODUCTION_SITE_URL: ${{ vars.PRODUCTION_SITE_URL }}
         run: |
-          [[ "$ANDROID_API_URL" =~ ^https://([a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\])(:[0-9]+)?/?$ ]] || {
-            echo "::error::STAGING_SITE_URL must be an HTTPS origin without a path or credentials"
+          case "$TARGET" in
+            staging) site=$STAGING_SITE_URL ;;
+            production) site=$PRODUCTION_SITE_URL ;;
+            *) exit 1 ;;
+          esac
+          [[ "$site" =~ ^https://([a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\])(:[0-9]+)?/?$ ]] || {
+            echo "::error::The selected environment requires an HTTPS origin without a path or credentials"
             exit 1
           }
+          site=${site%/}
+          echo "ANDROID_API_URL=$site" >> "$GITHUB_ENV"
+          echo "site_url=$site" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -71,32 +91,63 @@ jobs:
             --apk "$apk" --version-code "$ANDROID_VERSION_CODE"
       - uses: actions/upload-artifact@v4
         with:
-          name: farvater-driver-staging-${{ github.run_number }}
+          name: farvater-driver-${{ inputs.target }}-${{ github.run_number }}
           path: ${{ runner.temp }}/farvater-driver.apk
           if-no-files-found: error
-      - name: Send release to staging
-        if: ${{ !inputs.build_only }}
+
+  deploy:
+    if: ${{ !inputs.build_only && github.ref == 'refs/heads/main' }}
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ inputs.target }}
+    env:
+      ANDROID_API_URL: ${{ needs.build.outputs.site_url }}
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: farvater-driver-${{ inputs.target }}-${{ github.run_number }}
+          path: ${{ runner.temp }}
+      - name: Send release to the selected VPS
         env:
+          TARGET: ${{ inputs.target }}
           STAGING_HOST: ${{ vars.STAGING_HOST }}
-          SSH_KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
-          SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          STAGING_SSH_KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+          STAGING_SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+          PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+          PRODUCTION_SSH_KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
+          PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           umask 077
-          [[ "$STAGING_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:-]*$ ]]
+          case "$TARGET" in
+            staging)
+              DEPLOY_HOST=$STAGING_HOST
+              SSH_KNOWN_HOSTS=$STAGING_SSH_KNOWN_HOSTS
+              SSH_PRIVATE_KEY=$STAGING_SSH_PRIVATE_KEY
+              ;;
+            production)
+              DEPLOY_HOST=$PRODUCTION_HOST
+              SSH_KNOWN_HOSTS=$PRODUCTION_SSH_KNOWN_HOSTS
+              SSH_PRIVATE_KEY=$PRODUCTION_SSH_PRIVATE_KEY
+              ;;
+            *) exit 1 ;;
+          esac
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:-]*$ ]]
+          [[ -n "$SSH_PRIVATE_KEY" && -n "$SSH_KNOWN_HOSTS" ]]
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
-          work=$(mktemp -d "$RUNNER_TEMP/staging-ssh.XXXXXXXX")
+          work=$(mktemp -d "$RUNNER_TEMP/wayslate-ssh.XXXXXXXX")
           trap 'rm -rf -- "$work"' EXIT
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$work/key"
           printf '%s\n' "$SSH_KNOWN_HOSTS" > "$work/known_hosts"
-          unset SSH_PRIVATE_KEY SSH_KNOWN_HOSTS
-          ssh-keygen -F "$STAGING_HOST" -f "$work/known_hosts" > /dev/null
+          unset SSH_PRIVATE_KEY SSH_KNOWN_HOSTS STAGING_SSH_PRIVATE_KEY PRODUCTION_SSH_PRIVATE_KEY
+          ssh-keygen -F "$DEPLOY_HOST" -f "$work/known_hosts" > /dev/null
           ssh -T -i "$work/key" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$work/known_hosts" -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no \
             -o ForwardAgent=no -o ClearAllForwardings=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 \
-            "farvater-deploy@$STAGING_HOST" "$GITHUB_SHA" < "$RUNNER_TEMP/farvater-driver.apk"
+            "farvater-deploy@$DEPLOY_HOST" "$GITHUB_SHA" < "$RUNNER_TEMP/farvater-driver.apk"
       - name: Verify public health and APK
-        if: ${{ !inputs.build_only }}
         run: |
           set -euo pipefail
           site=${ANDROID_API_URL%/}
